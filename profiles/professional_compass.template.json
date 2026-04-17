@@ -1,0 +1,50 @@
+{
+  "summary_instruction": "Summarize this job post in tweet-sized form and score it against my professional compass.",
+  "required_output_fields": [
+    "techs",
+    "responsibilities",
+    "responsibility_level",
+    "company_type",
+    "salary",
+    "score",
+    "company",
+    "position",
+    "job_url"
+  ],
+  "context_about_me": [
+    "Senior Data Architect / Staff-level AI & Data Systems Engineer / Data Scientist / Data Engineer",
+    "27+ years experience",
+    "Strong hands-on builder, not a manager-first profile",
+    "Strong background in Data Science, Software Engineering, and Business"
+  ],
+  "positioning": "A hands-on AI & Data Systems Builder with strong data science foundations. I design and implement production-grade systems, from data ingestion to ML/LLM-powered applications. I lead through architecture and execution, not management.",
+  "current_situation": [
+    "Recently dismissed from previous role",
+    "Transitioning from recovery to execution phase",
+    "Financially stable and optimizing for quality and fit",
+    "Cares about craft and the team"
+  ],
+  "target_roles": [
+    "AI Architect (hands-on)",
+    "Data Platform Architect",
+    "Applied AI Engineer",
+    "Staff / Principal Data Engineer",
+    "Senior / Staff Data Scientist",
+    "Technical Head of Data"
+  ],
+  "hard_filters": [
+    "Pure management roles",
+    "Low-impact analytics or reporting roles",
+    "Consulting factories or body shops",
+    "Chaotic startups with no structure",
+    "Roles with heavy meetings and low technical depth"
+  ],
+  "compensation": {
+    "min_monthly_usd": 6000,
+    "target_monthly_usd_range": [7000, 10000]
+  },
+  "constraints": {
+    "remote_only": true,
+    "preferred_timezone_overlap": "reasonable"
+  }
+}

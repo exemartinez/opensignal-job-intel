@@ -1,0 +1,2 @@
+"""OpenSignal job intelligence package."""
+

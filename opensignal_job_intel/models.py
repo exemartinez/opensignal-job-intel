@@ -1,0 +1,79 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+from datetime import datetime, timezone
+from enum import StrEnum
+from urllib.parse import urlsplit, urlunsplit
+
+
+class JobSource(StrEnum):
+    LINKEDIN = "linkedin"
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def normalize_source_link(link: str) -> str:
+    parts = urlsplit(link.strip())
+    return urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/"), "", ""))
+
+
+@dataclass(slots=True)
+class JobRecord:
+    source: JobSource
+    company: str
+    title: str
+    description: str
+    link: str
+    collected_at: datetime
+    external_job_id: str | None = None
+    post_datetime: datetime | None = None
+    stored_at: datetime | None = None
+    salary_text: str | None = None
+    seen: bool = False
+    applied: bool = False
+
+    def normalized(self) -> "JobRecord":
+        return replace(
+            self,
+            company=self.company.strip(),
+            title=self.title.strip(),
+            description=self.description.strip(),
+            link=normalize_source_link(self.link),
+            salary_text=self.salary_text.strip() if self.salary_text else None,
+        )
+
+    @property
+    def dedupe_key(self) -> str:
+        if self.external_job_id:
+            return f"{self.source}:{self.external_job_id.strip()}"
+        return f"{self.source}:{normalize_source_link(self.link)}"
+
+
+@dataclass(slots=True)
+class ProfessionalCompass:
+    summary_instruction: str
+    required_output_fields: list[str]
+    context_about_me: list[str]
+    positioning: str
+    current_situation: list[str]
+    target_roles: list[str]
+    hard_filters: list[str]
+    min_monthly_usd: int
+    target_monthly_usd_range: list[int]
+    remote_only: bool
+    preferred_timezone_overlap: str
+
+
+@dataclass(slots=True)
+class JobEvaluation:
+    company: str
+    position: str
+    job_url: str
+    summary: str
+    techs: list[str]
+    responsibility_level: str
+    company_type: str
+    salary: str
+    score: int

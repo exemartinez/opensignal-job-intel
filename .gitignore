@@ -1,0 +1,40 @@
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+.opensignal-job-intel-env/
+
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Local runtime data
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Private profile data
+profiles/professional_compass.json
+
+# Logs and temp files
+*.log
+*.tmp
+tmp/
