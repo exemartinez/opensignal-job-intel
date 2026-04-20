@@ -1,0 +1,47 @@
+[
+  {
+    "id": "123",
+    "company": "CRAFTLabs",
+    "title": "Senior Data Scientist",
+    "description": "Remote product team building AI data products with Python, SQL, Snowflake and LLM systems. Hands-on individual contributor role.",
+    "posted_at": "2026-04-15T12:00:00Z",
+    "salary": "$7,000 - $10,000 monthly",
+    "link": "https://www.linkedin.com/jobs/view/123/"
+  },
+  {
+    "id": "124",
+    "company": "Northstar Data",
+    "title": "Staff Data Engineer",
+    "description": "Remote platform team modernizing batch and streaming pipelines with Python, SQL, dbt, Airflow, Snowflake, and AWS. Deep hands-on architecture and implementation role.",
+    "posted_at": "2026-04-16T09:30:00Z",
+    "salary": "$8,500 - $10,500 monthly",
+    "link": "https://www.linkedin.com/jobs/view/124/"
+  },
+  {
+    "id": "125",
+    "company": "SignalForge",
+    "title": "AI Architect",
+    "description": "Remote product team designing LLM, RAG, and agent-based systems with Python, vector search, and cloud data platforms. Senior individual contributor role with strong system design ownership.",
+    "posted_at": "2026-04-17T14:15:00Z",
+    "salary": "$9,000 - $12,000 monthly",
+    "link": "https://www.linkedin.com/jobs/view/125/"
+  },
+  {
+    "id": "126",
+    "company": "BluePeak Services",
+    "title": "Lead Data Platform Architect",
+    "description": "Remote services company delivering modern analytics and AI platforms with Snowflake, dbt, Python, SQL, Docker, and Kubernetes. Lead role with architecture ownership and selective client interaction.",
+    "posted_at": "2026-04-18T11:00:00Z",
+    "salary": "$7,500 - $9,500 monthly",
+    "link": "https://www.linkedin.com/jobs/view/126/"
+  },
+  {
+    "id": "127",
+    "company": "VertexBio",
+    "title": "Principal Applied AI Engineer",
+    "description": "Remote product organization applying ML and LLM systems to scientific workflows using Python, SQL, Spark, Snowflake, and AWS. Hands-on senior IC role focused on production systems.",
+    "posted_at": "2026-04-19T08:45:00Z",
+    "salary": "$10,000 - $13,000 monthly",
+    "link": "https://www.linkedin.com/jobs/view/127/"
+  }
+]

@@ -15,7 +15,7 @@ from opensignal_job_intel.sources.linkedin import LinkedInJsonFileAdapter
 
 class CompassTests(unittest.TestCase):
     def test_loads_professional_compass_from_json(self) -> None:
-        compass = load_professional_compass("profiles/professional_compass.json")
+        compass = load_professional_compass("profiles/professional_compass.template.json")
         self.assertTrue(compass.remote_only)
         self.assertEqual(6000, compass.min_monthly_usd)
         self.assertIn("AI Architect (hands-on)", compass.target_roles)
@@ -112,7 +112,7 @@ class SQLiteRepositoryTests(unittest.TestCase):
 
 class EvaluationTests(unittest.TestCase):
     def test_scores_job_against_professional_compass(self) -> None:
-        compass = load_professional_compass("profiles/professional_compass.json")
+        compass = load_professional_compass("profiles/professional_compass.template.json")
         evaluator = JobCompassEvaluator(compass)
         job = JobRecord(
             source=JobSource.LINKEDIN,
