@@ -8,6 +8,11 @@ from typing import Any
 from opensignal_job_intel.models import JobRecord, JobSource, utc_now
 from opensignal_job_intel.sources.base import JobSourceAdapter
 
+from opensignal_job_intel.sources.linkedin_acquire import (
+    LinkedInAcquisitionDiagnostics,
+    LinkedInScrapeAdapter,
+)
+
 
 def parse_optional_datetime(value: str | None) -> datetime | None:
     if not value:
@@ -44,3 +49,10 @@ class LinkedInJsonFileAdapter(JobSourceAdapter):
             salary_text=item.get("salary"),
             collected_at=collected_at,
         )
+
+
+__all__ = [
+    "LinkedInJsonFileAdapter",
+    "LinkedInScrapeAdapter",
+    "LinkedInAcquisitionDiagnostics",
+]

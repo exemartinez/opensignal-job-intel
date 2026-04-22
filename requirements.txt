@@ -1,0 +1,6 @@
+# Runtime dependencies
+#
+# Keep this list minimal. Add only third-party packages that are required
+# to run the CLI / ingestion flows.
+
+certifi>=2024.2.2
