@@ -4,6 +4,9 @@
 # IDE
 .idea/
 
+# OpenCode local state (tooling-managed; may contain node_modules)
+.opencode/
+
 # Python virtual environments
 .venv/
 venv/
@@ -33,8 +36,13 @@ data/
 
 # Private profile data
 profiles/professional_compass.json
+profiles/linkedin_extraction.json
 
 # Logs and temp files
 *.log
 *.tmp
 tmp/
+
+# Local env files (may contain credentials)
+.env
+.env.*

@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "search": {
+    "job_id_regex": "(?:/jobs/view/(?:[^\\\"\\?]*-)?)(\\d+)"
+  }
+}

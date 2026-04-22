@@ -19,10 +19,10 @@
   ],
   "positioning": "A hands-on AI & Data Systems Builder with strong data science foundations. I design and implement production-grade systems, from data ingestion to ML/LLM-powered applications. I lead through architecture and execution, not management.",
   "current_situation": [
-    "Recently dismissed from previous role",
-    "Transitioning from recovery to execution phase",
-    "Financially stable and optimizing for quality and fit",
-    "Cares about craft and the team"
+    "Actively interviewing and optimizing for quality and fit",
+    "Prefers hands-on, high-impact engineering work",
+    "Values strong craft and healthy team dynamics",
+    "Remote-first preference"
   ],
   "target_roles": [
     "AI Architect (hands-on)",
@@ -46,5 +46,10 @@
   "constraints": {
     "remote_only": true,
     "preferred_timezone_overlap": "reasonable"
+  },
+  "search": {
+    "max_post_age_days": 14,
+    "workplace_types": ["remote"],
+    "regions": ["US", "LATAM", "EMEA", "AR"]
   }
 }

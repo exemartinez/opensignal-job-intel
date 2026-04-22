@@ -8,6 +8,7 @@ from opensignal_job_intel.models import ProfessionalCompass
 
 def load_professional_compass(path: str | Path) -> ProfessionalCompass:
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    search = payload.get("search") or {}
     return ProfessionalCompass(
         summary_instruction=payload["summary_instruction"],
         required_output_fields=payload["required_output_fields"],
@@ -22,4 +23,7 @@ def load_professional_compass(path: str | Path) -> ProfessionalCompass:
         preferred_timezone_overlap=payload["constraints"][
             "preferred_timezone_overlap"
         ],
+        search_max_post_age_days=search.get("max_post_age_days"),
+        search_workplace_types=search.get("workplace_types"),
+        search_regions=search.get("regions"),
     )
