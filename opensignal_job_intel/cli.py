@@ -39,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ingest.add_argument(
         "--extraction-spec",
-        default="profiles/linkedin_extraction.template.json",
+        default="config/linkedin_extraction.template.json",
         help="Path to the LinkedIn extraction spec JSON used for live acquisition.",
     )
     ingest.add_argument(

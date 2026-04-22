@@ -31,6 +31,10 @@ class JobRecord:
     post_datetime: datetime | None = None
     stored_at: datetime | None = None
     salary_text: str | None = None
+    location_text: str | None = None
+    workplace_type: str | None = None
+    post_age_text: str | None = None
+    post_age_days: int | None = None
     seen: bool = False
     applied: bool = False
 
@@ -42,6 +46,9 @@ class JobRecord:
             description=self.description.strip(),
             link=normalize_source_link(self.link),
             salary_text=self.salary_text.strip() if self.salary_text else None,
+            location_text=self.location_text.strip() if self.location_text else None,
+            workplace_type=self.workplace_type.strip() if self.workplace_type else None,
+            post_age_text=self.post_age_text.strip() if self.post_age_text else None,
         )
 
     @property
@@ -64,6 +71,9 @@ class ProfessionalCompass:
     target_monthly_usd_range: list[int]
     remote_only: bool
     preferred_timezone_overlap: str
+    search_max_post_age_days: int | None = None
+    search_workplace_types: list[str] | None = None
+    search_regions: list[str] | None = None
 
 
 @dataclass(slots=True)

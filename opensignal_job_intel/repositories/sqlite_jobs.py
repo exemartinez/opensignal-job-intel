@@ -27,6 +27,10 @@ class SQLiteJobRepository:
                     post_datetime TEXT,
                     link TEXT NOT NULL,
                     salary_text TEXT,
+                    location_text TEXT,
+                    workplace_type TEXT,
+                    post_age_text TEXT,
+                    post_age_days INTEGER,
                     collected_at TEXT NOT NULL,
                     stored_at TEXT NOT NULL,
                     seen INTEGER NOT NULL DEFAULT 0,
@@ -40,6 +44,14 @@ class SQLiteJobRepository:
             }
             if "salary_text" not in existing_columns:
                 connection.execute("ALTER TABLE jobs ADD COLUMN salary_text TEXT")
+            if "location_text" not in existing_columns:
+                connection.execute("ALTER TABLE jobs ADD COLUMN location_text TEXT")
+            if "workplace_type" not in existing_columns:
+                connection.execute("ALTER TABLE jobs ADD COLUMN workplace_type TEXT")
+            if "post_age_text" not in existing_columns:
+                connection.execute("ALTER TABLE jobs ADD COLUMN post_age_text TEXT")
+            if "post_age_days" not in existing_columns:
+                connection.execute("ALTER TABLE jobs ADD COLUMN post_age_days INTEGER")
 
     def upsert_job(self, job: JobRecord) -> None:
         stored_at = utc_now()
@@ -56,11 +68,15 @@ class SQLiteJobRepository:
                     post_datetime,
                     link,
                     salary_text,
+                    location_text,
+                    workplace_type,
+                    post_age_text,
+                    post_age_days,
                     collected_at,
                     stored_at,
                     seen,
                     applied
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(dedupe_key) DO UPDATE SET
                     external_job_id = excluded.external_job_id,
                     company = excluded.company,
@@ -69,6 +85,10 @@ class SQLiteJobRepository:
                     post_datetime = excluded.post_datetime,
                     link = excluded.link,
                     salary_text = excluded.salary_text,
+                    location_text = excluded.location_text,
+                    workplace_type = excluded.workplace_type,
+                    post_age_text = excluded.post_age_text,
+                    post_age_days = excluded.post_age_days,
                     collected_at = excluded.collected_at,
                     stored_at = excluded.stored_at
                 """,
@@ -82,6 +102,10 @@ class SQLiteJobRepository:
                     _serialize_datetime(job.post_datetime),
                     job.link,
                     job.salary_text,
+                    job.location_text,
+                    job.workplace_type,
+                    job.post_age_text,
+                    job.post_age_days,
                     _serialize_datetime(job.collected_at),
                     _serialize_datetime(stored_at),
                     int(job.seen),
@@ -100,6 +124,10 @@ class SQLiteJobRepository:
                     description,
                     link,
                     salary_text,
+                    location_text,
+                    workplace_type,
+                    post_age_text,
+                    post_age_days,
                     collected_at,
                     external_job_id,
                     post_datetime,
@@ -132,6 +160,10 @@ class SQLiteJobRepository:
             description=row["description"],
             link=row["link"],
             salary_text=row["salary_text"],
+            location_text=row["location_text"],
+            workplace_type=row["workplace_type"],
+            post_age_text=row["post_age_text"],
+            post_age_days=row["post_age_days"],
             collected_at=_parse_datetime(row["collected_at"]),
             external_job_id=row["external_job_id"],
             post_datetime=_parse_datetime(row["post_datetime"]),

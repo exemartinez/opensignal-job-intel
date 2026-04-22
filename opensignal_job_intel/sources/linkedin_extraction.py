@@ -80,6 +80,10 @@ def extract_job_from_detail_html(
             post_datetime=post_datetime,
             link=str(link),
             salary_text=salary_text,
+            location_text=_extract_location_text(html),
+            workplace_type=_extract_workplace_type(html),
+            post_age_text=_extract_post_age_text(html),
+            post_age_days=_parse_post_age_days(_extract_post_age_text(html)),
             collected_at=collected_at,
         )
 
@@ -97,6 +101,10 @@ def extract_job_from_detail_html(
         or fallback_link
     )
     external_job_id = _extract_job_id_from_link(link) if link else None
+    location_text = _extract_location_text(html)
+    workplace_type = _extract_workplace_type(html)
+    post_age_text = _extract_post_age_text(html)
+    post_age_days = _parse_post_age_days(post_age_text)
 
     if not title or not company or not description or not link:
         return None
@@ -108,6 +116,10 @@ def extract_job_from_detail_html(
         title=str(title),
         description=str(description),
         link=str(link),
+        location_text=location_text,
+        workplace_type=workplace_type,
+        post_age_text=post_age_text,
+        post_age_days=post_age_days,
         collected_at=collected_at,
     )
 
@@ -132,6 +144,61 @@ def _extract_attr(html: str, pattern: str) -> str | None:
 def _extract_job_id_from_link(link: str) -> str | None:
     match = re.search(r"/jobs/view/(?:[^/]*-)?(\d+)", link)
     return match.group(1) if match else None
+
+
+def _extract_location_text(html: str) -> str | None:
+    # Example: <span class="topcard__flavor topcard__flavor--bullet">California, United States</span>
+    return _extract_text(html, r"<span[^>]*topcard__flavor--bullet[^>]*>(.*?)</span>")
+
+
+def _extract_post_age_text(html: str) -> str | None:
+    # Example: <span class="posted-time-ago__text ...">5 months ago</span>
+    return _extract_text(html, r"<span[^>]*posted-time-ago__text[^>]*>(.*?)</span>")
+
+
+def _extract_workplace_type(html: str) -> str | None:
+    # Best-effort heuristic: look for common strings in criteria/location/description.
+    lowered = html.lower()
+    if "workplace type" in lowered:
+        # Some pages include a criteria list item containing the workplace type value.
+        value = _extract_text(
+            html,
+            r"Workplace type\s*</h3>\s*<span[^>]*>(.*?)</span>",
+        )
+        if value:
+            return value.lower()
+    # Fallback: infer from visible text.
+    if "remote" in lowered:
+        return "remote"
+    if "hybrid" in lowered:
+        return "hybrid"
+    if "on-site" in lowered or "onsite" in lowered:
+        return "onsite"
+    return None
+
+
+def _parse_post_age_days(value: str | None) -> int | None:
+    if not value:
+        return None
+    normalized = re.sub(r"\s+", " ", value.strip().lower())
+    if normalized in {"just now", "today"}:
+        return 0
+    match = re.search(r"(\d+)\s+(minute|hour|day|week|month|year)s?\s+ago", normalized)
+    if not match:
+        return None
+    count = int(match.group(1))
+    unit = match.group(2)
+    if unit == "minute" or unit == "hour":
+        return 0
+    if unit == "day":
+        return count
+    if unit == "week":
+        return count * 7
+    if unit == "month":
+        return count * 30
+    if unit == "year":
+        return count * 365
+    return None
 
 
 def _extract_jobposting_jsonld(html: str) -> dict[str, Any] | None:

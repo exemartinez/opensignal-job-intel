@@ -46,3 +46,26 @@ The system SHALL support an LLM-assisted fallback path for extracting canonical 
 - **WHEN** the adapter cannot extract required canonical job fields (such as title, company, link, or description) for a collected posting
 - **THEN** the adapter can invoke a locally configured LLM endpoint to attempt extraction
 - **AND** the adapter records whether the job was extracted deterministically or via the fallback path
+
+### Requirement: Compass-driven acquisition filters
+The system SHALL derive acquisition filtering behavior from the professional compass JSON so the user can scope collection by time, workplace mode, and geography without adding CLI flags.
+
+#### Scenario: User configures a maximum post age
+- **WHEN** the compass defines `search.max_post_age_days`
+- **THEN** the LinkedIn adapter excludes jobs older than that age when a posting age signal can be extracted
+
+#### Scenario: User configures workplace modes
+- **WHEN** the compass defines `search.workplace_types`
+- **THEN** the LinkedIn adapter scopes acquisition to those workplace modes (remote/hybrid/onsite) when the source can be constrained or extracted reliably
+
+#### Scenario: User configures regions
+- **WHEN** the compass defines `search.regions`
+- **THEN** the LinkedIn adapter scopes acquisition to those regions (e.g., US, LATAM, EMEA, AR) when the source can be constrained or extracted reliably
+
+### Requirement: Posting age extraction
+The system SHALL attempt to extract posting age signals from LinkedIn pages when available.
+
+#### Scenario: Posting age text is present
+- **WHEN** a LinkedIn job detail page contains a relative posting age (e.g., "2 months ago")
+- **THEN** the adapter captures the raw posting age text
+- **AND** the adapter computes a best-effort normalized age value for filtering

@@ -46,5 +46,10 @@
   "constraints": {
     "remote_only": true,
     "preferred_timezone_overlap": "reasonable"
+  },
+  "search": {
+    "max_post_age_days": 14,
+    "workplace_types": ["remote"],
+    "regions": ["US", "LATAM", "EMEA", "AR"]
   }
 }

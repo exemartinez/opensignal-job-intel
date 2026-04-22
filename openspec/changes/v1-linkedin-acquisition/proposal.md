@@ -20,6 +20,7 @@ The current LinkedIn adapter is fixture-backed, which blocks the project from co
 ### Modified Capabilities
 
 - `job-source-ingestion`: change LinkedIn ingestion from fixture-backed stub to real acquisition (scraping), add acquisition diagnostics, add configurable parsing/extraction spec + validation, and allow an LLM-assisted fallback when source payloads drift.
+- `job-storage`: extend SQLite storage to persist LinkedIn-specific acquisition metadata needed for filtering and review (location/workplace type and post age signals) without breaking existing databases.
 
 ## Impact
 

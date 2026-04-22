@@ -90,6 +90,9 @@ class LinkedInScrapeAdapter(JobSourceAdapter):
 
     def fetch_jobs(self) -> list[JobRecord]:
         collected_at = utc_now()
+        max_age_days = self._compass.search_max_post_age_days
+        allowed_workplace = _normalize_str_list(self._compass.search_workplace_types)
+        allowed_regions = _normalize_str_list(self._compass.search_regions)
         queries = _derive_queries(self._compass, limit=self._max_queries)
         job_ids: list[str] = []
         for query in queries:
@@ -131,6 +134,16 @@ class LinkedInScrapeAdapter(JobSourceAdapter):
                     _write_capture(self._capture_dir, f"job_{job_id}.html", html)
                 continue
 
+            if not _passes_filters(
+                job,
+                max_post_age_days=max_age_days,
+                allowed_workplace_types=allowed_workplace,
+                allowed_regions=allowed_regions,
+            ):
+                self.diagnostics.dropped += 1
+                self.diagnostics.drops.append(f"filtered:{job_id}")
+                continue
+
             jobs.append(job)
             raw_fixture.append(
                 {
@@ -139,8 +152,12 @@ class LinkedInScrapeAdapter(JobSourceAdapter):
                     "title": job.title,
                     "description": job.description,
                     "posted_at": job.post_datetime.isoformat() if job.post_datetime else None,
+                    "post_age_text": job.post_age_text,
+                    "post_age_days": job.post_age_days,
                     "salary": job.salary_text,
                     "link": job.link,
+                    "location_text": job.location_text,
+                    "workplace_type": job.workplace_type,
                 }
             )
 
@@ -238,6 +255,105 @@ def _derive_queries(compass: ProfessionalCompass, limit: int) -> list[str]:
         queries.append(q)
     # Deduplicate while keeping order.
     return list(dict.fromkeys(queries))[:limit]
+
+
+def _normalize_str_list(value: list[str] | None) -> list[str] | None:
+    if value is None:
+        return None
+    normalized = [str(item).strip().lower() for item in value if str(item).strip()]
+    return list(dict.fromkeys(normalized))
+
+
+def _passes_filters(
+    job: JobRecord,
+    *,
+    max_post_age_days: int | None,
+    allowed_workplace_types: list[str] | None,
+    allowed_regions: list[str] | None,
+) -> bool:
+    if max_post_age_days is not None and job.post_age_days is not None:
+        if job.post_age_days > max_post_age_days:
+            return False
+
+    if allowed_workplace_types is not None and job.workplace_type is not None:
+        if job.workplace_type.strip().lower() not in allowed_workplace_types:
+            return False
+
+    if allowed_regions is not None and job.location_text:
+        region = _derive_region(job.location_text)
+        if region is not None and region.lower() not in allowed_regions:
+            return False
+
+    return True
+
+
+def _derive_region(location_text: str) -> str | None:
+    value = location_text.strip().lower()
+    if not value:
+        return None
+    if "united states" in value or value.endswith(", us") or value.endswith(", usa"):
+        return "us"
+    if "argentina" in value or value.endswith(", ar"):
+        return "ar"
+
+    # Best-effort buckets for common country strings.
+    latam = [
+        "mexico",
+        "brazil",
+        "chile",
+        "colombia",
+        "peru",
+        "uruguay",
+        "paraguay",
+        "bolivia",
+        "ecuador",
+        "venezuela",
+        "costa rica",
+        "panama",
+        "guatemala",
+        "el salvador",
+        "honduras",
+        "nicaragua",
+        "dominican republic",
+    ]
+    if any(country in value for country in latam):
+        return "latam"
+
+    emea = [
+        "united kingdom",
+        "uk",
+        "ireland",
+        "germany",
+        "france",
+        "spain",
+        "portugal",
+        "italy",
+        "netherlands",
+        "sweden",
+        "norway",
+        "denmark",
+        "finland",
+        "poland",
+        "switzerland",
+        "austria",
+        "belgium",
+        "czech",
+        "romania",
+        "bulgaria",
+        "greece",
+        "turkey",
+        "israel",
+        "uae",
+        "saudi",
+        "south africa",
+        "nigeria",
+        "kenya",
+        "morocco",
+        "egypt",
+    ]
+    if any(country in value for country in emea):
+        return "emea"
+    return None
 
 
 def _build_search_url(query: str, start: int) -> str:

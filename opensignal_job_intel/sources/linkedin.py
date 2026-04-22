@@ -47,6 +47,10 @@ class LinkedInJsonFileAdapter(JobSourceAdapter):
             ),
             link=item["link"],
             salary_text=item.get("salary"),
+            location_text=item.get("location_text"),
+            workplace_type=item.get("workplace_type"),
+            post_age_text=item.get("post_age_text"),
+            post_age_days=item.get("post_age_days"),
             collected_at=collected_at,
         )
 

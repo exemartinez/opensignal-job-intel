@@ -37,3 +37,15 @@
 - [x] 7.1 Update `ingest-linkedin` CLI to support live acquisition mode while retaining `--source-file` fixture mode
 - [x] 7.2 Add tests for extraction spec validation and deterministic extraction on representative captured payloads
 - [x] 7.3 Add a smoke test path to confirm SQLite stores full descriptions and dedupe still works
+
+## 8. Compass Search Filters
+
+- [x] 8.1 Extend professional compass schema with `search.max_post_age_days`, `search.workplace_types`, and `search.regions` (template + loader)
+- [x] 8.2 Apply `max_post_age_days` filtering using extracted posting-age signals (best-effort)
+- [x] 8.3 Apply workplace type and region constraints in acquisition (query construction and/or post-extraction filtering)
+
+## 9. Store Filter Metadata
+
+- [x] 9.1 Extend canonical job model and SQLite schema to store `location_text`, `workplace_type`, and posting age signals
+- [x] 9.2 Add additive migration for existing DBs and ensure upsert handles new fields
+- [x] 9.3 Add tests covering compass filter behavior and new stored columns

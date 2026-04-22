@@ -52,6 +52,36 @@ Rationale:
 Alternatives considered:
 - Only ingest search result cards (often incomplete). Rejected (must store full description).
 
+### Compass-driven scope: time, workplace mode, region
+
+Decision: extend the compass schema with a `search` section that controls acquisition scoping:
+- `search.max_post_age_days`
+- `search.workplace_types` (remote/hybrid/onsite)
+- `search.regions` (US/LATAM/EMEA/AR)
+
+Rationale:
+- Keeps CLI simple and keeps user intent centralized in one local file.
+- Makes acquisition runs repeatable without retyping flags.
+
+Alternatives considered:
+- Add CLI flags for each filter. Rejected (compass-only input is a project constraint).
+
+### Store filter-relevant metadata in SQLite
+
+Decision: extend storage to persist extracted `location_text`, `workplace_type`, and posting age signals (`post_age_text` and a normalized numeric age when possible).
+
+Rationale:
+- Allows downstream review and filtering without re-scraping.
+- Supports later improvements to filtering without losing previously collected jobs.
+
+### Extraction spec placement and overrides
+
+Decision: keep a repo-owned default extraction template under `config/` and allow a user override under `profiles/` (gitignored).
+
+Rationale:
+- Defaults are discoverable and versioned with the repo.
+- Overrides avoid committing site-specific tweaks.
+
 ### Parsing is driven by an explicit JSON extraction spec
 
 Decision: introduce a JSON “extraction model” that describes how to extract required fields (id, company, title, description, link, posted time when available, salary text when available) from the acquired payload (HTML or JSON).
@@ -92,7 +122,7 @@ Rationale:
 ## Migration Plan
 
 - Add new acquisition mode while retaining fixture ingestion for tests.
-- Keep the canonical schema unchanged; store richer job descriptions into the existing `description` field.
+- Evolve SQLite schema additively to store location/workplace mode/post age signals without requiring DB recreation.
 - If rolling back, disable/remove acquisition mode; existing SQLite DB remains valid.
 
 ## Open Questions

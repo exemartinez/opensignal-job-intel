@@ -11,6 +11,7 @@ from opensignal_job_intel.evaluation import JobCompassEvaluator
 from opensignal_job_intel.models import JobRecord, JobSource, utc_now
 from opensignal_job_intel.repositories.sqlite_jobs import SQLiteJobRepository
 from opensignal_job_intel.sources.linkedin import LinkedInJsonFileAdapter
+from opensignal_job_intel.sources.linkedin_acquire import _passes_filters
 from opensignal_job_intel.sources.linkedin_extraction import (
     LinkedInExtractionSpec,
     extract_job_from_detail_html,
@@ -25,6 +26,9 @@ class CompassTests(unittest.TestCase):
         self.assertTrue(compass.remote_only)
         self.assertEqual(6000, compass.min_monthly_usd)
         self.assertIn("AI Architect (hands-on)", compass.target_roles)
+        self.assertIsNotNone(compass.search_max_post_age_days)
+        self.assertIsInstance(compass.search_workplace_types, list)
+        self.assertIsInstance(compass.search_regions, list)
 
 
 class LinkedInAdapterTests(unittest.TestCase):
@@ -75,7 +79,17 @@ class SQLiteRepositoryTests(unittest.TestCase):
                 }
 
         self.assertTrue(
-            {"dedupe_key", "source", "salary_text", "seen", "applied"}.issubset(columns)
+            {
+                "dedupe_key",
+                "source",
+                "salary_text",
+                "location_text",
+                "workplace_type",
+                "post_age_text",
+                "post_age_days",
+                "seen",
+                "applied",
+            }.issubset(columns)
         )
 
     def test_upsert_prevents_duplicates_for_same_source_job(self) -> None:
@@ -170,6 +184,9 @@ class LinkedInExtractionTests(unittest.TestCase):
         self.assertEqual("Staff Data Architect", normalized.title)
         self.assertIn("Build data systems", normalized.description)
         self.assertEqual("https://www.linkedin.com/jobs/view/999", normalized.link)
+        self.assertEqual("Buenos Aires, Argentina", normalized.location_text)
+        self.assertEqual("2 weeks ago", normalized.post_age_text)
+        self.assertEqual(14, normalized.post_age_days)
 
     def test_sqlite_stores_extracted_full_description_and_dedupes(self) -> None:
         html = Path("tests/fixtures/linkedin_job_detail.html").read_text(encoding="utf-8")
@@ -184,6 +201,27 @@ class LinkedInExtractionTests(unittest.TestCase):
             stored = repo.list_jobs(limit=1)[0]
             self.assertIn("Build data systems", stored.description)
             self.assertEqual("999", stored.external_job_id)
+            self.assertEqual("Buenos Aires, Argentina", stored.location_text)
+            self.assertEqual(14, stored.post_age_days)
+
+    def test_applies_best_effort_max_age_filter(self) -> None:
+        job = JobRecord(
+            source=JobSource.LINKEDIN,
+            company="A",
+            title="T",
+            description="D",
+            link="https://www.linkedin.com/jobs/view/1/",
+            collected_at=utc_now(),
+            post_age_days=31,
+        ).normalized()
+        self.assertFalse(
+            _passes_filters(
+                job,
+                max_post_age_days=14,
+                allowed_workplace_types=None,
+                allowed_regions=None,
+            )
+        )
 
 
 if __name__ == "__main__":
