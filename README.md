@@ -18,18 +18,17 @@ This project is intended to help a candidate review and prioritize job opportuni
 
 ## Current Status
 
-The repository now contains the first implemented OpenSpec change, `v1-linkedin-ingestion-storage`. The current repo state is a working local-first prototype: it can load a professional compass, ingest fixture-backed LinkedIn job data through the source adapter boundary, store canonical jobs in SQLite, and produce a first-pass rule-based evaluation for human review.
+The repository is a working local-first prototype.
+
+It can:
+- load a professional compass (your local job-search intent and constraints)
+- ingest LinkedIn jobs via either a fixture-backed adapter or live acquisition (scraping)
+- store canonical jobs in SQLite with additive schema evolution
+- score each stored job via a lightweight rule-based evaluator for human review
 
 ## OpenSpec Shell Usage
 
-This machine has an outdated default `node` binary, so OpenSpec must currently be run with the Homebrew Node 20 path in front.
-
-For shell usage, run OpenSpec with:
-
-```bash
-env PATH=/usr/local/opt/node@20/bin:$PATH openspec --version
-env PATH=/usr/local/opt/node@20/bin:$PATH openspec init .
-```
+Run OpenSpec with `openspec ...`.
 
 ## Repository Structure
 
@@ -51,14 +50,17 @@ env PATH=/usr/local/opt/node@20/bin:$PATH openspec init .
 
 ## Current V1 Implementation
 
-The first increment implements:
+The current implementation includes:
 
 - a canonical `JobRecord` model for normalized postings
 - a stored professional compass profile used as the user-facing input
 - a committed professional compass template for repository users
 - a source adapter boundary via `JobSourceAdapter`
-- a minimal LinkedIn adapter backed by local JSON fixtures
+- a LinkedIn adapter backed by local JSON fixtures (fixture mode)
+- a live LinkedIn acquisition adapter (scraping) with diagnostics (live mode)
+- compass-driven acquisition filters (best-effort): post age, workplace type, region
 - a SQLite repository with duplicate-safe upsert behavior and additive schema initialization for new canonical fields
+- additional stored metadata for filtering/review: location text, workplace type, and posting age signals
 - a lightweight evaluator that classifies and scores each job against the compass
 - a CLI workflow to ingest and score stored jobs locally
 
@@ -96,14 +98,74 @@ For the current v1 stub adapter, create a small LinkedIn-style source fixture:
 
 Run ingestion with `python3`:
 
+Fixture mode (offline):
+
 ```bash
-python3 main.py ingest-linkedin --compass-file profiles/professional_compass.json --source-file /path/to/linkedin_jobs.json
+python3.11 main.py ingest-linkedin \
+  --compass-file profiles/professional_compass.json \
+  --source-file /path/to/linkedin_jobs.json
+```
+
+Live mode (scraping):
+
+```bash
+python3.11 main.py ingest-linkedin \
+  --compass-file profiles/professional_compass.json \
+  --max-jobs 25
 ```
 
 Optional flags:
 
 - `--db-path data/jobs.db` to choose the SQLite file location
 - `--limit 10` to control how many stored jobs are printed after ingestion
+- `--capture-dir data/linkedin_captures` to persist raw HTML captures locally for debugging
+- `--write-fixture data/linkedin_fixture.json` to write a local fixture extracted from live acquisition
+
+## Compass Search Filters
+
+The compass supports a `search` block that scopes live acquisition:
+
+```json
+{
+  "search": {
+    "max_post_age_days": 14,
+    "workplace_types": ["remote"],
+    "regions": ["US", "LATAM", "EMEA", "AR"]
+  }
+}
+```
+
+Filtering is best-effort and relies on what can be extracted from the LinkedIn guest pages.
+
+## Extraction Spec
+
+Live acquisition uses an extraction spec JSON.
+
+- Default template: `config/linkedin_extraction.template.json`
+- Local override (gitignored): `profiles/linkedin_extraction.json`
+
+Pass a custom path with `--extraction-spec`.
+
+## Optional Local-Only Environment Variables
+
+- `LINKEDIN_COOKIES`: attach LinkedIn session cookies for authenticated scraping (local-only)
+- `LINKEDIN_CSRF`: attach a CSRF token header when needed (local-only)
+- `LOCAL_LLM_BASE_URL`: local LLM endpoint used only for fallback extraction when deterministic parsing fails
+
+Do not commit credentials to the repo.
+
+## Stored Fields (SQLite)
+
+In addition to core canonical fields (company/title/description/link/etc.), the SQLite schema stores filter-relevant metadata when available:
+- `location_text`
+- `workplace_type`
+- `post_age_text` and `post_age_days`
+
+Schema changes are additive; existing databases are migrated at initialization.
+
+## Changelog
+
+See `CHANGELOG.md`.
 
 ## LinkedIn Adapter Assumption
 
@@ -111,18 +173,12 @@ The v1 LinkedIn adapter still reads a local JSON file that represents already-co
 
 ## OpenSpec Status
 
-The active implemented change is:
-
-```text
-openspec/changes/v1-linkedin-ingestion-storage
-```
-
-The current repository behavior is intended to align with that change's proposal, design, specs, and tasks. This change is the implemented baseline for v1 and should be archived only after review and acceptance.
+Baseline specs live in `openspec/specs/` and completed changes are archived under `openspec/changes/archive/`.
 
 ## Testing
 
 Run the test suite with:
 
 ```bash
-python3 -m unittest discover -s tests -v
+python3.11 -m unittest discover -s tests -v
 ```
