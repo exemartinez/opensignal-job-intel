@@ -1,6 +1,6 @@
 ## Context
 
-The current CLI supports LinkedIn ingestion in fixture mode and live acquisition mode. It can store canonical jobs in SQLite and apply best-effort filters driven by the professional compass. The next step is to operate the system as a nightly “job farmer” that can run for hours, accumulate a large local corpus, and minimize the risk of throttling by pacing requests and backing off under 429/403.
+The current CLI supports LinkedIn ingestion in fixture mode and live acquisition mode. It can store canonical jobs in SQLite and apply best-effort filters driven by the professional compass. The next step is to operate the system as a nightly “job farmer” that can run for hours, accumulate a large local corpus over months, and minimize the risk of throttling by reducing unnecessary requests and backing off under HTTP 403.
 
 Key constraints:
 - Local-first: SQLite remains the primary store.
@@ -11,12 +11,15 @@ Key constraints:
 ## Goals / Non-Goals
 
 **Goals:**
-- Add a dedicated harvest execution path intended for unattended nightly runs.
+- Add a dedicated harvest orchestrator intended for unattended nightly runs.
 - Read harvest runtime controls from a schedule config file (`config/extraction_schedule.yaml`).
-- Enforce strict, compass-driven constraints for harvesting (remote-only + region + parametric recency).
+- Reuse professional-compass roles as the query source for harvesting.
+- Enforce compass-driven constraints for harvesting while stopping early once the result stream is clearly older than the recency window.
+- Support Canada alongside the existing US, LATAM, EMEA, and AR regional query/filter labels, using `CANADA` as a valid compass region value.
 - Reduce redundant network calls by checking SQLite for known LinkedIn job IDs before fetching details.
 - Infer `post_datetime` when missing using `collected_at - post_age_days`.
-- Provide low-noise stdout progress suitable for cron logs.
+- Persist run state so a harvest can resume where it left off on the next invocation.
+- Provide verbose timestamped logging suitable for cron plus periodic summaries.
 
 **Non-Goals:**
 - No background service framework (Airflow) or daemonization; scheduling remains external (cron/systemd/launchd).
@@ -25,12 +28,12 @@ Key constraints:
 
 ## Decisions
 
-### Add a harvest entrypoint
+### Add a harvest orchestrator
 
-Decision: add a dedicated harvest entrypoint (either a new subcommand like `harvest-linkedin` or an explicit `--harvest` mode) to separate interactive runs from long-running batch behavior.
+Decision: add a dedicated harvest orchestrator and expose it with a dedicated entrypoint such as `harvest-linkedin`, rather than folding batch behavior into `ingest-linkedin` flags.
 
 Rationale:
-- Harvest mode has different defaults (strict filtering, pacing/backoff, progress cadence).
+- Harvest mode has different concerns than interactive ingestion: resume state, runtime windows, backoff behavior, and verbose logging.
 - Keeps the existing `ingest-linkedin` UX intact for ad-hoc runs.
 
 ### Schedule configuration format and location
@@ -43,7 +46,7 @@ Rationale:
 Implementation note:
 - Python stdlib does not parse YAML; prefer a small dependency (`PyYAML`) rather than inventing a partial YAML parser.
 
-### Idempotency via DB existence checks before detail fetch
+### Incrementality via DB existence checks before detail fetch
 
 Decision: treat LinkedIn job ID (`external_job_id`) as the primary identity for “already stored” checks. Harvest mode performs:
 1) collect job IDs from search pages
@@ -54,23 +57,60 @@ Rationale:
 - The detail fetch is the most expensive and most throttle-prone step.
 - This is the main lever to support harvesting thousands of postings safely.
 
-### Strict filter policy for harvest mode
+### Query source comes from the professional compass
 
-Decision: harvest mode uses a stricter policy than interactive ingestion:
-- region: accept postings that clearly indicate "United States" and "Remote" even without city/state
-- recency: use `search.max_post_age_days` (parametric)
-- missing signals: apply an explicit policy (configured for harvest mode) to drop or keep when age/location/workplace cannot be extracted
+Decision: harvest queries reuse the role targets already present in the professional compass, instead of introducing a separate harvest query list in this change.
 
 Rationale:
-- The goal is a high-signal database; permissive behavior will accumulate junk at scale.
+- Keeps the first implementation aligned with current repo behavior.
+- Avoids introducing a second query-definition surface before the orchestrator is proven in practice.
 
-### Randomized backoff under 429/403
+### Age cutoff and search exhaustion stop rules
 
-Decision: implement randomized backoff with jitter, up to a configured ceiling (max 4 hours). Backoff state should be visible via diagnostics/progress.
+Decision: harvest mode stops pursuing a search stream when both of these are true:
+1) the run encounters a posting older than the configured recency window (initially two weeks via `search.max_post_age_days`)
+2) the run also sees N consecutive search pages with no new LinkedIn job IDs
 
 Rationale:
-- Randomized delay reduces synchronized retry patterns and is less bot-like than a deterministic exponential schedule.
-- A ceiling prevents the process from stalling indefinitely.
+- LinkedIn search results are expected to trend newest-to-oldest, so once the stream is stale there is little value in pushing deeper into the tail.
+- This gives the harvester a simple, measurable way to stop when nightly yield has dried up.
+
+Bug-fix clarification:
+- Narrow searches can also exhaust without exposing clearly stale age signals in the returned HTML.
+- Therefore, the harvester should stop after 5 consecutive search pages with no new LinkedIn job IDs even when `stale_results` remains false.
+
+### Filter as much as possible before detail fetch, but keep v1 simple
+
+Decision: the first harvest implementation should use the current extractor behavior plus aggressive known-ID skipping before detail fetch. Richer pre-detail filtering from search metadata can be added later if needed.
+
+Rationale:
+- Request minimization is more important than speculative pre-optimization.
+- The existing extractor already gives enough surface area to validate the orchestrator before making search-page parsing more complex.
+
+### Exponential backoff under HTTP 403 with sticky caution
+
+Decision: implement exponential backoff triggered by HTTP 403 only. After a 403, the harvester becomes more conservative for the remainder of the run rather than immediately returning to its original pace after a single success.
+
+Rationale:
+- The user is most concerned about IP/account throttling rather than generic request failures.
+- Sticky caution is the safer first behavior for unattended overnight runs.
+- Non-403 errors should still be logged, but do not need to drive the same throttling policy in this change.
+
+### Verbose timestamped logging
+
+Decision: harvest mode logs every request and important event with a local timestamp (`YYYY-MM-DD HH:mm:ss`) and also emits periodic summary lines.
+
+Rationale:
+- Cronified overnight runs need enough detail to understand where the harvester was in the result stream when throttling or drift occurred.
+- Summary lines make long logs easier to scan without sacrificing forensic detail.
+
+### Resume where the last run stopped
+
+Decision: the harvest orchestrator persists run memory beyond stored jobs, including last query positions, recent throttling events, last successful run timestamps, and per-query yield stats.
+
+Rationale:
+- This lets each nightly run continue from prior progress rather than rediscovering the same low-yield territory.
+- Operational state is a core part of request minimization.
 
 ### Posting datetime inference
 
@@ -82,19 +122,19 @@ Rationale:
 ## Risks / Trade-offs
 
 - [YAML dependency increases setup friction] -> Mitigation: keep dependency list minimal and document `pip install -r requirements.txt`.
-- [Strict filtering drops good jobs when signals are missing] -> Mitigation: make the missing-field policy configurable; emit counts and reasons.
-- [LinkedIn blocks/changes pages] -> Mitigation: raw capture + diagnostics remain available; harvest should exit cleanly after configured stop conditions.
+- [LinkedIn blocks/changes pages] -> Mitigation: raw capture + diagnostics remain available; harvest should back off under 403, preserve state, and continue only while the nightly window remains open.
 - [Large SQLite DB growth] -> Mitigation: rely on indices for ID existence checks; keep schema additive.
+- [Verbose request logging creates large logs] -> Mitigation: keep line-oriented logs simple and pair them with periodic summaries.
 
 ## Migration Plan
 
 - Add schedule template under `config/` and ignore the local override path.
-- Add harvest entrypoint.
+- Add harvest orchestrator entrypoint.
 - Add repository helper(s) for efficient ID existence checks.
+- Add persistent harvest run state.
 - Backfill `post_datetime` inference for newly collected jobs (and optionally for existing rows if explicitly requested).
 
 ## Open Questions
 
-- Do we want harvest mode to stop immediately on first 403, or only after N consecutive 403/429 responses?
-- Should `post_datetime` inference be applied only at ingestion time, or also as a periodic backfill job for existing rows?
-- What is the minimum progress cadence (dots per request vs per detail fetch; summary every N details)?
+- Should verbose request logs go only to a file, or to both stdout and a file during cron runs?
+- Should persisted run state live in SQLite, a sidecar file, or both?
