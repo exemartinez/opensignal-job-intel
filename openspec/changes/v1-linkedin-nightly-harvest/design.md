@@ -14,6 +14,7 @@ Key constraints:
 - Add a dedicated harvest orchestrator intended for unattended nightly runs.
 - Read harvest runtime controls from a schedule config file (`config/extraction_schedule.yaml`).
 - Reuse professional-compass roles as the query source for harvesting.
+- Keep repo-owned operational entrypoints for installing/removing cron, running a guarded harvest, and inspecting logs/status alongside the LinkedIn source implementation in Python.
 - Enforce compass-driven constraints for harvesting while stopping early once the result stream is clearly older than the recency window.
 - Support Canada alongside the existing US, LATAM, EMEA, and AR regional query/filter labels, using `CANADA` as a valid compass region value.
 - Reduce redundant network calls by checking SQLite for known LinkedIn job IDs before fetching details.
@@ -35,6 +36,16 @@ Decision: add a dedicated harvest orchestrator and expose it with a dedicated en
 Rationale:
 - Harvest mode has different concerns than interactive ingestion: resume state, runtime windows, backoff behavior, and verbose logging.
 - Keeps the existing `ingest-linkedin` UX intact for ad-hoc runs.
+
+### Keep operational helpers source-local and Python-based
+
+Decision: implement repo-owned cron/status/log helper entrypoints as Python files under `opensignal_job_intel/sources/` rather than generic top-level shell scripts.
+
+Rationale:
+- The helpers are specific to LinkedIn harvest operations, not generic repository utilities.
+- Keeping them in the source package makes ownership clearer and removes duplicated shell logic.
+- Python entrypoints can share one implementation module while still leaving external scheduling in cron rather than inside the core application loop.
+- Cron install helpers should emit absolute interpreter paths so scheduled runs do not depend on the reduced `PATH` available inside cron.
 
 ### Schedule configuration format and location
 
@@ -130,6 +141,7 @@ Rationale:
 
 - Add schedule template under `config/` and ignore the local override path.
 - Add harvest orchestrator entrypoint.
+- Add source-local Python operational entrypoints for install/remove/run/status/log inspection.
 - Add repository helper(s) for efficient ID existence checks.
 - Add persistent harvest run state.
 - Backfill `post_datetime` inference for newly collected jobs (and optionally for existing rows if explicitly requested).

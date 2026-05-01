@@ -36,3 +36,4 @@
 
 - [x] 7.1 Add a smoke test command / doc snippet for running harvest mode safely under a nightly window (e.g., 00:00 to 08:00) with low `max_jobs`
 - [x] 7.2 Run unit tests and ensure `openspec validate v1-linkedin-nightly-harvest` passes
+- [x] 7.3 Keep repo-owned operational entrypoints as Python files under `opensignal_job_intel/sources/` and document the supported commands
