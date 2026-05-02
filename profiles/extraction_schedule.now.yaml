@@ -1,0 +1,20 @@
+window:
+  start: "00:00"
+  end: "23:59"
+search:
+  max_queries: 6
+  max_pages_per_query: 200
+  empty_search_pages_threshold: 3
+  missing_signal_policy: keep
+pacing:
+  base_delay_seconds: 5.0
+  jitter_seconds: 3.0
+  sticky_caution_multiplier: 2.0
+backoff:
+  initial_delay_seconds: 60.0
+  multiplier: 2.0
+  max_delay_seconds: 7200.0
+progress:
+  summary_every_requests: 10
+logging:
+  file_path: data/harvest-linkedin.now.log

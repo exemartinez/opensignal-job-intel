@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
-from opensignal_job_intel.models import JobRecord, JobSource, utc_now
+from dataclasses import replace
+
+from opensignal_job_intel.models import (
+    HarvestQueryState,
+    HarvestRunState,
+    JobRecord,
+    JobSource,
+    utc_now,
+)
 
 
 class SQLiteJobRepository:
@@ -38,6 +46,38 @@ class SQLiteJobRepository:
                 )
                 """
             )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_jobs_source_external_job_id "
+                "ON jobs(source, external_job_id)"
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS harvest_run_state (
+                    source TEXT PRIMARY KEY,
+                    throttle_events INTEGER NOT NULL DEFAULT 0,
+                    current_backoff_seconds REAL NOT NULL DEFAULT 0,
+                    sticky_caution_enabled INTEGER NOT NULL DEFAULT 0,
+                    last_throttle_at TEXT,
+                    last_success_at TEXT,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS harvest_query_state (
+                    source TEXT NOT NULL,
+                    query TEXT NOT NULL,
+                    next_start INTEGER NOT NULL DEFAULT 0,
+                    consecutive_empty_pages INTEGER NOT NULL DEFAULT 0,
+                    yielded_new_ids INTEGER NOT NULL DEFAULT 0,
+                    saw_stale_results INTEGER NOT NULL DEFAULT 0,
+                    last_success_at TEXT,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY(source, query)
+                )
+                """
+            )
             existing_columns = {
                 row["name"]
                 for row in connection.execute("PRAGMA table_info(jobs)").fetchall()
@@ -54,6 +94,7 @@ class SQLiteJobRepository:
                 connection.execute("ALTER TABLE jobs ADD COLUMN post_age_days INTEGER")
 
     def upsert_job(self, job: JobRecord) -> None:
+        job = _with_inferred_post_datetime(job)
         stored_at = utc_now()
         with self._connect() as connection:
             connection.execute(
@@ -147,6 +188,127 @@ class SQLiteJobRepository:
             row = connection.execute("SELECT COUNT(*) FROM jobs").fetchone()
         return int(row[0])
 
+    def existing_external_job_ids(
+        self, source: JobSource, external_job_ids: list[str]
+    ) -> set[str]:
+        ids = [value.strip() for value in external_job_ids if value.strip()]
+        if not ids:
+            return set()
+        placeholders = ", ".join("?" for _ in ids)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT external_job_id
+                FROM jobs
+                WHERE source = ?
+                  AND external_job_id IN ({placeholders})
+                """,
+                (source.value, *ids),
+            ).fetchall()
+        return {str(row[0]) for row in rows if row[0]}
+
+    def get_harvest_run_state(self, source: str) -> HarvestRunState:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM harvest_run_state WHERE source = ?", (source,)
+            ).fetchone()
+        if row is None:
+            return HarvestRunState(source=source)
+        return HarvestRunState(
+            source=row["source"],
+            throttle_events=int(row["throttle_events"]),
+            current_backoff_seconds=float(row["current_backoff_seconds"]),
+            sticky_caution_enabled=bool(row["sticky_caution_enabled"]),
+            last_throttle_at=_parse_datetime(row["last_throttle_at"]),
+            last_success_at=_parse_datetime(row["last_success_at"]),
+        )
+
+    def save_harvest_run_state(self, state: HarvestRunState) -> None:
+        updated_at = utc_now()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO harvest_run_state (
+                    source,
+                    throttle_events,
+                    current_backoff_seconds,
+                    sticky_caution_enabled,
+                    last_throttle_at,
+                    last_success_at,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(source) DO UPDATE SET
+                    throttle_events = excluded.throttle_events,
+                    current_backoff_seconds = excluded.current_backoff_seconds,
+                    sticky_caution_enabled = excluded.sticky_caution_enabled,
+                    last_throttle_at = excluded.last_throttle_at,
+                    last_success_at = excluded.last_success_at,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    state.source,
+                    state.throttle_events,
+                    state.current_backoff_seconds,
+                    int(state.sticky_caution_enabled),
+                    _serialize_datetime(state.last_throttle_at),
+                    _serialize_datetime(state.last_success_at),
+                    _serialize_datetime(updated_at),
+                ),
+            )
+
+    def get_harvest_query_state(self, source: str, query: str) -> HarvestQueryState:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM harvest_query_state WHERE source = ? AND query = ?",
+                (source, query),
+            ).fetchone()
+        if row is None:
+            return HarvestQueryState(source=source, query=query)
+        return HarvestQueryState(
+            source=row["source"],
+            query=row["query"],
+            next_start=int(row["next_start"]),
+            consecutive_empty_pages=int(row["consecutive_empty_pages"]),
+            yielded_new_ids=int(row["yielded_new_ids"]),
+            saw_stale_results=bool(row["saw_stale_results"]),
+            last_success_at=_parse_datetime(row["last_success_at"]),
+        )
+
+    def save_harvest_query_state(self, state: HarvestQueryState) -> None:
+        updated_at = utc_now()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO harvest_query_state (
+                    source,
+                    query,
+                    next_start,
+                    consecutive_empty_pages,
+                    yielded_new_ids,
+                    saw_stale_results,
+                    last_success_at,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(source, query) DO UPDATE SET
+                    next_start = excluded.next_start,
+                    consecutive_empty_pages = excluded.consecutive_empty_pages,
+                    yielded_new_ids = excluded.yielded_new_ids,
+                    saw_stale_results = excluded.saw_stale_results,
+                    last_success_at = excluded.last_success_at,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    state.source,
+                    state.query,
+                    state.next_start,
+                    state.consecutive_empty_pages,
+                    state.yielded_new_ids,
+                    int(state.saw_stale_results),
+                    _serialize_datetime(state.last_success_at),
+                    _serialize_datetime(updated_at),
+                ),
+            )
+
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self._db_path)
         connection.row_factory = sqlite3.Row
@@ -179,3 +341,9 @@ def _serialize_datetime(value: datetime | None) -> str | None:
 
 def _parse_datetime(value: str | None) -> datetime | None:
     return datetime.fromisoformat(value) if value else None
+
+
+def _with_inferred_post_datetime(job: JobRecord) -> JobRecord:
+    if job.post_datetime is not None or job.post_age_days is None:
+        return job
+    return replace(job, post_datetime=job.collected_at - timedelta(days=job.post_age_days))
