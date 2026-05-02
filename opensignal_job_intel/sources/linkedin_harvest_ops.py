@@ -38,7 +38,7 @@ class RepoPaths:
 
     @property
     def schedule_override_path(self) -> Path:
-        return self.root_dir / "profiles" / "extraction_schedule.yaml"
+        return self.root_dir / "config" / "extraction_schedule.yaml"
 
     @property
     def run_script_path(self) -> Path:
