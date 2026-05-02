@@ -14,6 +14,7 @@ Key constraints:
 - Add a dedicated harvest orchestrator intended for unattended nightly runs.
 - Read harvest runtime controls from a schedule config file (`config/extraction_schedule.yaml`).
 - Reuse professional-compass roles as the query source for harvesting.
+- Keep repo-owned operational entrypoints for installing/removing cron, running a guarded harvest, and inspecting logs/status alongside the LinkedIn source implementation in Python.
 - Enforce compass-driven constraints for harvesting while stopping early once the result stream is clearly older than the recency window.
 - Support Canada alongside the existing US, LATAM, EMEA, and AR regional query/filter labels, using `CANADA` as a valid compass region value.
 - Reduce redundant network calls by checking SQLite for known LinkedIn job IDs before fetching details.
@@ -36,12 +37,22 @@ Rationale:
 - Harvest mode has different concerns than interactive ingestion: resume state, runtime windows, backoff behavior, and verbose logging.
 - Keeps the existing `ingest-linkedin` UX intact for ad-hoc runs.
 
-### Schedule configuration format and location
+### Keep operational helpers source-local and Python-based
 
-Decision: store a repo-owned schedule template at `config/extraction_schedule.yaml` and allow a user override under a gitignored local file (e.g., `profiles/extraction_schedule.yaml`).
+Decision: implement repo-owned cron/status/log helper entrypoints as Python files under `opensignal_job_intel/sources/` rather than generic top-level shell scripts.
 
 Rationale:
-- Mirrors the extraction-spec pattern: committed default + local override.
+- The helpers are specific to LinkedIn harvest operations, not generic repository utilities.
+- Keeping them in the source package makes ownership clearer and removes duplicated shell logic.
+- Python entrypoints can share one implementation module while still leaving external scheduling in cron rather than inside the core application loop.
+- Cron install helpers should emit absolute interpreter paths so scheduled runs do not depend on the reduced `PATH` available inside cron.
+
+### Schedule configuration format and location
+
+Decision: store a repo-owned schedule template at `config/extraction_schedule.template.yaml` and allow a gitignored local schedule instance at `config/extraction_schedule.yaml`.
+
+Rationale:
+- Keeps the committed template and the editable local instance together in one place instead of splitting them across `config/` and `profiles/`.
 
 Implementation note:
 - Python stdlib does not parse YAML; prefer a small dependency (`PyYAML`) rather than inventing a partial YAML parser.
@@ -130,6 +141,7 @@ Rationale:
 
 - Add schedule template under `config/` and ignore the local override path.
 - Add harvest orchestrator entrypoint.
+- Add source-local Python operational entrypoints for install/remove/run/status/log inspection.
 - Add repository helper(s) for efficient ID existence checks.
 - Add persistent harvest run state.
 - Backfill `post_datetime` inference for newly collected jobs (and optionally for existing rows if explicitly requested).

@@ -132,10 +132,31 @@ python3.11 main.py harvest-linkedin \
 
 Schedule precedence for harvest mode:
 
-- local override: `profiles/extraction_schedule.yaml`
+- local override: `config/extraction_schedule.yaml`
 - fallback template: `config/extraction_schedule.template.yaml`
 
 The nightly harvester writes verbose timestamped logs to the configured `.log` file and persists resume state in SQLite so the next run can continue where the previous one stopped.
+
+Operational helper scripts:
+
+```bash
+python3.11 opensignal_job_intel/sources/install_continuous_hourly_harvest_cron.py
+python3.11 opensignal_job_intel/sources/install_harvest_cron.py
+python3.11 opensignal_job_intel/sources/remove_harvest_cron.py
+python3.11 opensignal_job_intel/sources/run_harvest_cron.py
+python3.11 opensignal_job_intel/sources/harvest_status.py
+python3.11 opensignal_job_intel/sources/show_recent_jobs.py 25
+python3.11 opensignal_job_intel/sources/tail_harvest_logs.py
+```
+
+These source-specific Python entrypoints keep scheduling external to the main harvest application while providing a repo-owned way to install cron entries, trigger a guarded run, and inspect harvest state.
+
+Notes:
+
+- Install the cron helper from the exact Python environment you want cron to use. The installed cron line captures that interpreter as an absolute path.
+- `install_continuous_hourly_harvest_cron.py` installs the hourly cron block.
+- `install_harvest_cron.py` installs the nightly cron block.
+- `remove_harvest_cron.py` removes the nightly cron block only.
 
 ## Compass Search Filters
 

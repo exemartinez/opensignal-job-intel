@@ -7,6 +7,7 @@ Live LinkedIn acquisition works, but it is currently optimized for interactive r
 - Add a “nightly harvest” execution path that can run for hours, pacing requests to resemble a human browsing pattern (jittered delays) and applying strict recency + geography + workplace constraints.
 - Make harvesting incremental and idempotent at scale: avoid fetching job detail pages for jobs already present in SQLite, and rely on stable LinkedIn job IDs / canonical links for dedupe.
 - Add schedule/run controls via a configuration file (e.g., runtime window, pacing, randomized backoff on 429/403 up to a 4-hour ceiling).
+- Add repo-owned Python operational entrypoints for cron installation, guarded run invocation, status checks, and log tailing under the LinkedIn source package rather than generic top-level shell scripts.
 - Improve posting timestamps: when `post_datetime` is missing but `post_age_days` is available, infer an expected `post_datetime` from `collected_at - post_age_days`.
 - Add lightweight progress reporting for long runs (stdout-friendly, periodic summaries).
 
@@ -23,6 +24,6 @@ Live LinkedIn acquisition works, but it is currently optimized for interactive r
 
 ## Impact
 
-- Affected code: LinkedIn acquisition adapter, CLI entrypoints, and SQLite repository query patterns (plus any new batch config loading).
+- Affected code: LinkedIn acquisition adapter, CLI entrypoints, source-specific harvest operational entrypoints, and SQLite repository query patterns (plus any new batch config loading).
 - Data: SQLite continues to be the primary store; harvest mode increases volume (thousands of jobs) and should minimize duplicate network fetches.
 - Operations: Intended to be run unattended (cron/server). Runs must degrade safely under throttling (randomized backoff) and exit cleanly.
