@@ -37,6 +37,7 @@ data/
 # Private profile data
 profiles/professional_compass.json
 profiles/linkedin_extraction.json
+profiles/extraction_schedule.yaml
 
 # Logs and temp files
 *.log

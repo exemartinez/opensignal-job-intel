@@ -121,6 +121,22 @@ Optional flags:
 - `--capture-dir data/linkedin_captures` to persist raw HTML captures locally for debugging
 - `--write-fixture data/linkedin_fixture.json` to write a local fixture extracted from live acquisition
 
+Nightly harvest mode:
+
+```bash
+python3.11 main.py harvest-linkedin \
+  --compass-file profiles/professional_compass.json \
+  --db-path data/jobs.db \
+  --max-jobs 25
+```
+
+Schedule precedence for harvest mode:
+
+- local override: `profiles/extraction_schedule.yaml`
+- fallback template: `config/extraction_schedule.template.yaml`
+
+The nightly harvester writes verbose timestamped logs to the configured `.log` file and persists resume state in SQLite so the next run can continue where the previous one stopped.
+
 ## Compass Search Filters
 
 The compass supports a `search` block that scopes live acquisition:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 from enum import StrEnum
 from urllib.parse import urlsplit, urlunsplit
 
@@ -87,3 +87,42 @@ class JobEvaluation:
     company_type: str
     salary: str
     score: int
+
+
+@dataclass(slots=True)
+class HarvestSchedule:
+    window_start: time
+    window_end: time
+    max_queries: int
+    max_pages_per_query: int
+    empty_search_pages_threshold: int
+    base_delay_seconds: float
+    jitter_seconds: float
+    sticky_caution_multiplier: float
+    backoff_initial_seconds: float
+    backoff_multiplier: float
+    backoff_max_seconds: float
+    summary_every_requests: int
+    log_path: str
+    missing_signal_policy: str = "keep"
+
+
+@dataclass(slots=True)
+class HarvestRunState:
+    source: str
+    throttle_events: int = 0
+    current_backoff_seconds: float = 0.0
+    sticky_caution_enabled: bool = False
+    last_throttle_at: datetime | None = None
+    last_success_at: datetime | None = None
+
+
+@dataclass(slots=True)
+class HarvestQueryState:
+    source: str
+    query: str
+    next_start: int = 0
+    consecutive_empty_pages: int = 0
+    yielded_new_ids: int = 0
+    saw_stale_results: bool = False
+    last_success_at: datetime | None = None

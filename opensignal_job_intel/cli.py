@@ -8,6 +8,11 @@ from opensignal_job_intel.compass import load_professional_compass
 from opensignal_job_intel.evaluation import JobCompassEvaluator
 from opensignal_job_intel.repositories.sqlite_jobs import SQLiteJobRepository
 from opensignal_job_intel.services import JobIngestionService
+from opensignal_job_intel.sources.linkedin_harvest import (
+    LinkedInNightlyHarvester,
+    load_harvest_schedule,
+    resolve_harvest_schedule_path,
+)
 from opensignal_job_intel.sources.linkedin import (
     LinkedInJsonFileAdapter,
     LinkedInScrapeAdapter,
@@ -70,14 +75,59 @@ def build_parser() -> argparse.ArgumentParser:
         help="How many stored jobs to print after ingestion.",
     )
 
+    harvest = subparsers.add_parser(
+        "harvest-linkedin",
+        help="Run the nightly LinkedIn harvest orchestrator into SQLite.",
+    )
+    harvest.add_argument(
+        "--compass-file",
+        default="profiles/professional_compass.json",
+        help="Path to the professional compass JSON file.",
+    )
+    harvest.add_argument(
+        "--extraction-spec",
+        default="config/linkedin_extraction.template.json",
+        help="Path to the LinkedIn extraction spec JSON used for acquisition.",
+    )
+    harvest.add_argument(
+        "--schedule-file",
+        default=None,
+        help=(
+            "Optional path to the harvest schedule YAML. "
+            "Defaults to profiles/extraction_schedule.yaml when present, "
+            "otherwise config/extraction_schedule.template.yaml."
+        ),
+    )
+    harvest.add_argument(
+        "--capture-dir",
+        default=None,
+        help="Optional directory to persist raw HTML captures (gitignored via data/).",
+    )
+    harvest.add_argument(
+        "--db-path",
+        default="data/jobs.db",
+        help="SQLite database path. Defaults to data/jobs.db.",
+    )
+    harvest.add_argument(
+        "--max-jobs",
+        type=int,
+        default=None,
+        help="Optional cap on how many new jobs to store during this run.",
+    )
+
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
-    if args.command != "ingest-linkedin":
-        raise ValueError(f"Unsupported command: {args.command}")
+    if args.command == "ingest-linkedin":
+        return _run_ingest(args)
+    if args.command == "harvest-linkedin":
+        return _run_harvest(args)
+    raise ValueError(f"Unsupported command: {args.command}")
 
+
+def _run_ingest(args: argparse.Namespace) -> int:
     repository = SQLiteJobRepository(Path(args.db_path))
     repository.initialize()
     compass = load_professional_compass(args.compass_file)
@@ -111,6 +161,35 @@ def main() -> int:
             pass
     for evaluation in result.evaluations[: args.limit]:
         print(json.dumps(evaluator.as_dict(evaluation), ensure_ascii=True))
+    return 0
+
+
+def _run_harvest(args: argparse.Namespace) -> int:
+    repository = SQLiteJobRepository(Path(args.db_path))
+    repository.initialize()
+    compass = load_professional_compass(args.compass_file)
+    schedule_path = resolve_harvest_schedule_path(args.schedule_file)
+    schedule = load_harvest_schedule(schedule_path)
+    harvester = LinkedInNightlyHarvester(
+        compass=compass,
+        repository=repository,
+        extraction_spec_path=args.extraction_spec,
+        schedule=schedule,
+        capture_dir=args.capture_dir,
+        max_jobs=args.max_jobs,
+    )
+    result = harvester.run()
+    print(
+        json.dumps(
+            {
+                "harvest_summary": result.as_dict(),
+                "db_path": args.db_path,
+                "stored_records": repository.count_jobs(),
+                "schedule_file": schedule_path,
+            },
+            ensure_ascii=True,
+        )
+    )
     return 0
 
 

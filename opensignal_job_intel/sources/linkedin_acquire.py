@@ -293,6 +293,8 @@ def _derive_region(location_text: str) -> str | None:
         return None
     if "united states" in value or value.endswith(", us") or value.endswith(", usa"):
         return "us"
+    if "canada" in value or value.endswith(", ca"):
+        return "ca"
     if "argentina" in value or value.endswith(", ar"):
         return "ar"
 
@@ -315,6 +317,7 @@ def _derive_region(location_text: str) -> str | None:
         "honduras",
         "nicaragua",
         "dominican republic",
+        "Latin America"
     ]
     if any(country in value for country in latam):
         return "latam"
@@ -337,19 +340,19 @@ def _derive_region(location_text: str) -> str | None:
         "switzerland",
         "austria",
         "belgium",
-        "czech",
-        "romania",
-        "bulgaria",
-        "greece",
-        "turkey",
-        "israel",
-        "uae",
-        "saudi",
-        "south africa",
-        "nigeria",
-        "kenya",
-        "morocco",
-        "egypt",
+        #"czech",
+        #"romania",
+        #"bulgaria",
+        #"greece",
+        #"turkey",
+        #"israel",
+        #"uae",
+        #"saudi",
+        #"south africa",
+        #"nigeria",
+        #"kenya",
+        #"morocco",
+        #"egypt",
     ]
     if any(country in value for country in emea):
         return "emea"
