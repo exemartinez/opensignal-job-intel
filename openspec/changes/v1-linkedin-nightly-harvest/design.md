@@ -38,10 +38,10 @@ Rationale:
 
 ### Schedule configuration format and location
 
-Decision: store a repo-owned schedule template at `config/extraction_schedule.yaml` and allow a user override under a gitignored local file (e.g., `profiles/extraction_schedule.yaml`).
+Decision: store a repo-owned schedule template at `config/extraction_schedule.template.yaml` and allow a gitignored local schedule instance at `config/extraction_schedule.yaml`.
 
 Rationale:
-- Mirrors the extraction-spec pattern: committed default + local override.
+- Keeps the committed template and the editable local instance together in one place instead of splitting them across `config/` and `profiles/`.
 
 Implementation note:
 - Python stdlib does not parse YAML; prefer a small dependency (`PyYAML`) rather than inventing a partial YAML parser.

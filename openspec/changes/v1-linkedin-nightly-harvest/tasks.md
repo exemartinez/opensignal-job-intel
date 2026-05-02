@@ -1,7 +1,7 @@
 ## 1. Schedule Config + Defaults
 
 - [x] 1.1 Add `config/extraction_schedule.template.yaml` with harvest window, pacing/jitter, backoff ceiling, and progress cadence
-- [x] 1.2 Add gitignored local override path (e.g., `profiles/extraction_schedule.yaml`) and document precedence
+- [x] 1.2 Add gitignored local schedule instance at `config/extraction_schedule.yaml` and document precedence
 - [x] 1.3 Add YAML parsing dependency and wire schedule config loading
 
 ## 2. Harvest Entrypoint

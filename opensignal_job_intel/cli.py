@@ -94,7 +94,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Optional path to the harvest schedule YAML. "
-            "Defaults to profiles/extraction_schedule.yaml when present, "
+            "Defaults to config/extraction_schedule.yaml when present, "
             "otherwise config/extraction_schedule.template.yaml."
         ),
     )

@@ -57,7 +57,7 @@ EOF
 crontab "$TMP_CRON"
 
 printf 'Installed nightly harvest cron entry.\n'
-printf 'Window is controlled by %s\n' "$ROOT_DIR/profiles/extraction_schedule.yaml"
+printf 'Window is controlled by %s\n' "$ROOT_DIR/config/extraction_schedule.yaml"
 printf 'Harvest runner: %s\n' "$RUN_SCRIPT"
 printf 'Current log target: %s\n' "$CRON_LOG"
 printf '\nCurrent crontab:\n'

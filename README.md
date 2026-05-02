@@ -132,7 +132,7 @@ python3.11 main.py harvest-linkedin \
 
 Schedule precedence for harvest mode:
 
-- local override: `profiles/extraction_schedule.yaml`
+- local override: `config/extraction_schedule.yaml`
 - fallback template: `config/extraction_schedule.template.yaml`
 
 The nightly harvester writes verbose timestamped logs to the configured `.log` file and persists resume state in SQLite so the next run can continue where the previous one stopped.
