@@ -40,7 +40,7 @@ from opensignal_job_intel.sources.linkedin_extraction import (
 
 
 DEFAULT_SCHEDULE_PATH = "config/extraction_schedule.template.yaml"
-LOCAL_SCHEDULE_OVERRIDE_PATH = "profiles/extraction_schedule.yaml"
+LOCAL_SCHEDULE_OVERRIDE_PATH = "config/extraction_schedule.yaml"
 HARVEST_SOURCE = JobSource.LINKEDIN.value
 
 

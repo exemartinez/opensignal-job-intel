@@ -37,7 +37,6 @@ data/
 # Private profile data
 profiles/professional_compass.json
 profiles/linkedin_extraction.json
-profiles/extraction_schedule.yaml
 
 # Logs and temp files
 *.log
@@ -47,3 +46,4 @@ tmp/
 # Local env files (may contain credentials)
 .env
 .env.*
+config/extraction_schedule.yaml
