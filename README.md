@@ -30,6 +30,35 @@ It can:
 
 Run OpenSpec with `openspec ...`.
 
+## Environment Setup
+
+Use Python 3.11 or newer. The code imports `enum.StrEnum`, so older Python versions will fail.
+
+Create and activate a virtual environment:
+
+```bash
+python3.11 -m venv .opensignal-job-intel-env
+source .opensignal-job-intel-env/bin/activate
+```
+
+Install runtime dependencies:
+
+```bash
+python3.11 -m pip install --upgrade pip
+python3.11 -m pip install -r requirements.txt
+```
+
+The current runtime dependencies are defined in `requirements.txt`:
+
+- `certifi`
+- `PyYAML`
+
+If you plan to use OpenSpec on this machine, Node 20 must also be in `PATH`:
+
+```bash
+env PATH=/usr/local/opt/node@20/bin:$PATH openspec validate
+```
+
 ## Repository Structure
 
 - `main.py`: CLI launcher
