@@ -2,10 +2,10 @@
 
 ## Purpose
 
-This document defines the architectural expectations for `opensignal-job-intel` repo.
-It is intended to guide refactoring, code review, and future feature work so the
-codebase evolves toward clearer object boundaries, lower duplication, and more
-predictable behavior.
+This document defines the architectural expectations for the
+`opensignal-job-intel` repository. It is intended to guide code review, feature
+work, and structural changes so the codebase evolves toward clearer object
+boundaries, lower duplication, and more predictable behavior.
 
 This file complements:
 - `AGENTS.md` for runtime/tooling guidance
@@ -15,7 +15,7 @@ This file complements:
 
 ## Architectural Direction
 
-The codebase is moving toward:
+The codebase should favor:
 
 - stronger object-oriented boundaries
 - smaller modules with single responsibilities
@@ -24,7 +24,7 @@ The codebase is moving toward:
 
 ## Current Responsibility Boundaries
 
-Until the refactor lands, use the current structure intentionally:
+Use the current structure intentionally:
 
 - `main.py`
   - CLI launcher only
@@ -175,8 +175,7 @@ When too many features are shared, choose inheritance.
 ### Public modules, classes, and methods
 
 Public modules, public classes, and public methods should have concise docstrings
-when they define stable responsibilities or are likely to be used as refactor
-anchors.
+when they define stable responsibilities or are likely to be reused or extended.
 
 The docstring should explain:
 - what the object/function is responsible for
@@ -214,9 +213,9 @@ Do not use comments for:
 
 ## Testing Expectations
 
-Tests are the safety net for architectural change.
+Tests are the safety net for behavioral stability and structural change.
 
-When refactoring, prefer tests that lock:
+Prefer tests that lock:
 - public behavior
 - persisted state
 - command behavior
@@ -230,6 +229,16 @@ Do not overfit tests to:
 - incidental method boundaries
 - temporary module layout
 
+#### Critical
+
+These areas need strong regression protection because they define top-level
+workflow behavior:
+- CLI wiring
+- LinkedIn acquisition
+- LinkedIn harvest orchestration
+- LinkedIn harvest operational helpers
+- SQLite repository behavior
+
 #### Moderate
 
 These need focused edge-case coverage:
@@ -242,6 +251,11 @@ These need focused edge-case coverage:
 #### Smoke-only
 
 Thin entrypoint wrappers usually need import/dispatch coverage only.
+
+## Change Discipline
+
+If a structural change also changes supported behavior, capture that through
+OpenSpec instead of hiding it inside cleanup or reorganization work.
 
 ## Decision Rule
 

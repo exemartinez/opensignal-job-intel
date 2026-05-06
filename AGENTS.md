@@ -22,6 +22,7 @@
   - persist via SQLite repository (`repositories/sqlite_jobs.py`)
   - evaluate via rule-based evaluator (`evaluation.py`)
 - Current LinkedIn adapter is fixture-backed only (`opensignal_job_intel/sources/linkedin.py` reads local JSON). Do not claim real LinkedIn acquisition in docs/spec text unless that change is implemented.
+- Follow `ARCHITECTURE.md` for package boundaries, OO conventions, duplication policy, and documentation expectations.
 
 ## Data + Persistence Facts That Affect Changes
 - Private user profile is `profiles/professional_compass.json` (gitignored). Committed template is `profiles/professional_compass.template.json`.
