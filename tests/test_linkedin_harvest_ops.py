@@ -44,12 +44,14 @@ class HarvestOpsTests(unittest.TestCase):
             run_script.parent.mkdir(parents=True, exist_ok=True)
             run_script.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
 
-            tool = ops.HarvestCronScripts(run_script)
+            with patch.object(ops, "_python_executable", return_value="/abs/python3.11"):
+                tool = ops.HarvestCronScripts(run_script)
             tool._paths = ops.RepoPaths(root_dir=root)
             tool._crontab = FakeCrontabManager()
+            tool._cron_entries = ops.HarvestCronEntryBuilder(tool._paths, "/abs/python3.11")
 
             output = io.StringIO()
-            with patch.object(ops, "_python_executable", return_value="/abs/python3.11"), contextlib.redirect_stdout(output):
+            with contextlib.redirect_stdout(output):
                 result = tool.install_continuous_hourly_harvest()
 
             self.assertEqual(0, result)
