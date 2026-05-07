@@ -5,6 +5,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## - 2026-05-07
+
+### Changed
+- Live LinkedIn fixture export now uses the canonical SQLite/job-record row shape instead of the older ad hoc extractor JSON shape, including `id`, `dedupe_key`, `source`, `external_job_id`, `company`, `title`, `description`, `post_datetime`, `link`, `salary_text`, `location_text`, `workplace_type`, `post_age_text`, `post_age_days`, `collected_at`, `stored_at`, `seen`, and `applied`, making the output safer for later data migration work.
+- Live LinkedIn acquisition diagnostics now include richer URL/error details for transport failures.
+
 ## - 2026-04-22
 
 ### Added

@@ -145,21 +145,7 @@ class LinkedInScrapeAdapter(JobSourceAdapter):
                 continue
 
             jobs.append(job)
-            raw_fixture.append(
-                {
-                    "id": job.external_job_id or job_id,
-                    "company": job.company,
-                    "title": job.title,
-                    "description": job.description,
-                    "posted_at": job.post_datetime.isoformat() if job.post_datetime else None,
-                    "post_age_text": job.post_age_text,
-                    "post_age_days": job.post_age_days,
-                    "salary": job.salary_text,
-                    "link": job.link,
-                    "location_text": job.location_text,
-                    "workplace_type": job.workplace_type,
-                }
-            )
+            raw_fixture.append(_job_to_fixture_item(job))
 
         if self._write_fixture_path:
             self._write_fixture_path.parent.mkdir(parents=True, exist_ok=True)
@@ -194,11 +180,13 @@ class LinkedInScrapeAdapter(JobSourceAdapter):
             return None
         except ssl.SSLCertVerificationError as exc:
             self.diagnostics.dropped += 1
-            self.diagnostics.drops.append(f"ssl_verify_failed:{kind}:{exc}")
+            self.diagnostics.drops.append(
+                f"ssl_verify_failed:{kind}:{url}:{type(exc).__name__}:{exc}"
+            )
             return None
         except urllib.error.URLError as exc:
             self.diagnostics.dropped += 1
-            self.diagnostics.drops.append(f"url_error:{kind}:{exc}")
+            self.diagnostics.drops.append(_format_url_error(kind=kind, url=url, error=exc))
             return None
         finally:
             if self._request_delay_seconds > 0:
@@ -370,6 +358,40 @@ def _build_search_url(query: str, start: int) -> str:
 def _write_capture(dir_path: Path, name: str, content: str) -> None:
     dir_path.mkdir(parents=True, exist_ok=True)
     (dir_path / name).write_text(content, encoding="utf-8")
+
+
+def _job_to_fixture_item(job: JobRecord) -> dict[str, object]:
+    """Serialize a canonical job record into the JSON fixture shape used for migrations/debugging."""
+
+    normalized = job.normalized()
+    return {
+        "id": None,
+        "dedupe_key": normalized.dedupe_key,
+        "source": normalized.source.value,
+        "external_job_id": normalized.external_job_id,
+        "company": normalized.company,
+        "title": normalized.title,
+        "description": normalized.description,
+        "post_datetime": normalized.post_datetime.isoformat() if normalized.post_datetime else None,
+        "link": normalized.link,
+        "salary_text": normalized.salary_text,
+        "location_text": normalized.location_text,
+        "workplace_type": normalized.workplace_type,
+        "post_age_text": normalized.post_age_text,
+        "post_age_days": normalized.post_age_days,
+        "collected_at": normalized.collected_at.isoformat(),
+        "stored_at": normalized.stored_at.isoformat() if normalized.stored_at else None,
+        "seen": normalized.seen,
+        "applied": normalized.applied,
+    }
+
+
+def _format_url_error(*, kind: str, url: str, error: urllib.error.URLError) -> str:
+    """Return a diagnostic string rich enough to debug transport failures offline."""
+
+    reason = error.reason
+    reason_type = type(reason).__name__ if reason is not None else "None"
+    return f"url_error:{kind}:{url}:{reason_type}:{error}"
 
 
 def _ssl_context() -> ssl.SSLContext:

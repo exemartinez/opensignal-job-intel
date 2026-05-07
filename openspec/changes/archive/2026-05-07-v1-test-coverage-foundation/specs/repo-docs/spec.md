@@ -1,8 +1,5 @@
-# repo-docs Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change v1-docs-release-notes. Update Purpose after archive.
-## Requirements
 ### Requirement: README reflects current repo behavior
 The repository SHALL maintain a README that describes the current supported CLI workflows, configuration inputs, environment setup, and canonical test execution workflow.
 
@@ -21,11 +18,3 @@ The repository SHALL maintain a README that describes the current supported CLI 
 - **THEN** the README documents the supported Python environment bootstrap steps
 - **AND** it documents the canonical dependency installation command
 - **AND** it documents the canonical automated test command used for repository validation
-
-### Requirement: Changelog exists and follows a stable format
-The repository SHALL include a `CHANGELOG.md` that documents notable changes using an Unreleased section and dated release entries.
-
-#### Scenario: Changelog has Unreleased and dated entries
-- **WHEN** a user opens `CHANGELOG.md`
-- **THEN** it contains a `## [Unreleased]` section
-- **AND** it contains dated release entries with `### Added`, `### Changed`, `### Fixed`, and `### Removed` subsections when applicable
