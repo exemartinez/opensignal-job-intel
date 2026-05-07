@@ -37,6 +37,11 @@ Rationale:
 Alternatives considered:
 - Pursue uniform 100% line coverage across the repo. Rejected because it would spend effort on trivial wrappers while leaving less time for failure-path and state-transition coverage in the high-risk modules.
 
+Coverage tier audit for this change:
+- Critical: `cli.py`, `sources/linkedin_acquire.py`, `sources/linkedin_harvest.py`, `sources/linkedin_harvest_ops.py`, `repositories/sqlite_jobs.py`
+- Moderate: `models.py`, `evaluation.py`, `compass.py`, `sources/linkedin_extraction.py`
+- Smoke-only: source-local Python entrypoints under `opensignal_job_intel/sources/`
+
 ### Organize tests by subsystem instead of keeping a single monolithic test module
 
 Decision: split the current suite into subsystem-oriented test files, such as CLI, repository, extraction, harvest orchestration, and operational helper tests.

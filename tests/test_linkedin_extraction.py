@@ -22,6 +22,12 @@ class LinkedInExtractionTests(unittest.TestCase):
         )
         validate_extraction_spec(spec)
 
+    def test_rejects_invalid_extraction_spec_regex(self) -> None:
+        spec = LinkedInExtractionSpec(version=1, search_job_id_regex="(")
+
+        with self.assertRaises(ValueError):
+            validate_extraction_spec(spec)
+
     def test_extracts_job_ids_from_search_html(self) -> None:
         html = Path("tests/fixtures/linkedin_search.html").read_text(encoding="utf-8")
         spec = LinkedInExtractionSpec(
@@ -45,6 +51,10 @@ class LinkedInExtractionTests(unittest.TestCase):
         self.assertEqual("Buenos Aires, Argentina", normalized.location_text)
         self.assertEqual("2 weeks ago", normalized.post_age_text)
         self.assertEqual(14, normalized.post_age_days)
+
+    def test_returns_none_when_detail_html_is_missing_required_fields(self) -> None:
+        job = extract_job_from_detail_html("<html><body>empty</body></html>", collected_at=utc_now())
+        self.assertIsNone(job)
 
     def test_sqlite_stores_extracted_full_description_and_dedupes(self) -> None:
         html = Path("tests/fixtures/linkedin_job_detail.html").read_text(encoding="utf-8")

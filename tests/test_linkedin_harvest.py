@@ -112,6 +112,22 @@ logging:
         url = _build_harvest_search_url(plans[0], 0, compass)
         self.assertIn("location=Canada", url)
 
+    def test_resolve_harvest_schedule_path_prefers_local_override(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            override_path = Path(temp_dir) / "config" / "extraction_schedule.yaml"
+            override_path.parent.mkdir(parents=True, exist_ok=True)
+            override_path.write_text("window:\n  start: '00:00'\n  end: '08:00'\n", encoding="utf-8")
+
+            with unittest.mock.patch(
+                "opensignal_job_intel.sources.linkedin_harvest.LOCAL_SCHEDULE_OVERRIDE_PATH",
+                str(override_path),
+            ):
+                from opensignal_job_intel.sources.linkedin_harvest import resolve_harvest_schedule_path
+
+                resolved = resolve_harvest_schedule_path(None)
+
+        self.assertEqual(str(override_path), resolved)
+
     def test_filter_decision_reports_exact_failure_reason(self) -> None:
         decision = _evaluate_harvest_filters(
             JobRecord(
@@ -290,6 +306,82 @@ class NightlyHarvestTests(unittest.TestCase):
         self.assertEqual(5, len(requests_seen))
         self.assertEqual(1, result.stale_stream_stops)
         self.assertEqual(5, query_state.consecutive_empty_pages)
+
+    def test_harvest_resumes_from_saved_query_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repository = SQLiteJobRepository(Path(temp_dir) / "jobs.db")
+            repository.initialize()
+            schedule = make_harvest_schedule(
+                log_path=Path(temp_dir) / "harvest.log",
+                max_pages_per_query=1,
+            )
+            query_key = 'AI Architect (hands-on) remote::United States'
+            state = repository.get_harvest_query_state("linkedin", query_key)
+            state.next_start = 75
+            repository.save_harvest_query_state(state)
+            seen_urls: list[str] = []
+
+            def fetcher(url: str, kind: str) -> FetchResponse:
+                seen_urls.append(url)
+                return FetchResponse(url=url, kind=kind, text="<html><body></body></html>", status_code=200)
+
+            harvester = LinkedInNightlyHarvester(
+                compass=load_default_compass(),
+                repository=repository,
+                extraction_spec_path="config/linkedin_extraction.template.json",
+                schedule=schedule,
+                fetcher=fetcher,
+                sleep=lambda _: None,
+            )
+
+            harvester.run()
+
+        self.assertTrue(seen_urls)
+        self.assertIn("start=75", seen_urls[0])
+
+    def test_harvest_stops_when_max_jobs_is_reached(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repository = SQLiteJobRepository(Path(temp_dir) / "jobs.db")
+            repository.initialize()
+            schedule = make_harvest_schedule(log_path=Path(temp_dir) / "harvest.log")
+            search_html = '<html><body><a href="/jobs/view/124/">Job 124</a></body></html>'
+            detail_html = """
+<html>
+  <head><link rel="canonical" href="https://www.linkedin.com/jobs/view/124/" /></head>
+  <body>
+    <h1 class="topcard__title">Staff Data Architect</h1>
+    <a class="topcard__org-name-link">Example Corp</a>
+    <span class="topcard__flavor topcard__flavor--bullet">Remote in United States</span>
+    <span class="posted-time-ago__text">2 days ago</span>
+    <div>Workplace type</h3><span>remote</span></div>
+    <div class="show-more-less-html__markup">Build data systems with Python and SQL.</div>
+  </body>
+</html>
+            """.strip()
+            responses = [
+                FetchResponse(url="search", kind="search", text=search_html, status_code=200),
+                FetchResponse(url="detail", kind="job", text=detail_html, status_code=200),
+            ]
+
+            def fetcher(url: str, kind: str) -> FetchResponse:
+                response = responses.pop(0)
+                return FetchResponse(url=url, kind=kind, text=response.text, status_code=response.status_code)
+
+            harvester = LinkedInNightlyHarvester(
+                compass=load_default_compass(),
+                repository=repository,
+                extraction_spec_path="config/linkedin_extraction.template.json",
+                schedule=schedule,
+                fetcher=fetcher,
+                sleep=lambda _: None,
+                max_jobs=1,
+            )
+
+            result = harvester.run()
+            stored_count = repository.count_jobs()
+
+        self.assertEqual(1, result.stored)
+        self.assertEqual(1, stored_count)
 
 
 if __name__ == "__main__":

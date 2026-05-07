@@ -141,6 +141,51 @@ class SQLiteRepositoryTests(unittest.TestCase):
         self.assertEqual(8, saved_query.yielded_new_ids)
         self.assertTrue(saved_query.saw_stale_results)
 
+    def test_initialize_adds_new_columns_to_legacy_jobs_table(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "jobs.db"
+            with sqlite3.connect(db_path) as connection:
+                connection.execute(
+                    """
+                    CREATE TABLE jobs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        dedupe_key TEXT NOT NULL UNIQUE,
+                        source TEXT NOT NULL,
+                        external_job_id TEXT,
+                        company TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        description TEXT NOT NULL,
+                        post_datetime TEXT,
+                        link TEXT NOT NULL,
+                        collected_at TEXT NOT NULL,
+                        stored_at TEXT NOT NULL,
+                        seen INTEGER NOT NULL DEFAULT 0,
+                        applied INTEGER NOT NULL DEFAULT 0
+                    )
+                    """
+                )
+
+            repository = SQLiteJobRepository(db_path)
+            repository.initialize()
+
+            with sqlite3.connect(db_path) as connection:
+                columns = {
+                    row[1] for row in connection.execute("PRAGMA table_info(jobs)").fetchall()
+                }
+
+        self.assertTrue(
+            {"salary_text", "location_text", "workplace_type", "post_age_text", "post_age_days"}.issubset(columns)
+        )
+
+    def test_existing_external_job_ids_ignores_blank_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repository = SQLiteJobRepository(Path(temp_dir) / "jobs.db")
+            repository.initialize()
+
+            result = repository.existing_external_job_ids(JobSource.LINKEDIN, ["", "   "])
+
+        self.assertEqual(set(), result)
+
 
 if __name__ == "__main__":
     unittest.main()

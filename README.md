@@ -48,6 +48,12 @@ python3.11 -m pip install --upgrade pip
 python3.11 -m pip install -r requirements.txt
 ```
 
+Run the automated regression suite with:
+
+```bash
+python3.11 -m unittest discover -s tests -v
+```
+
 The current runtime dependencies are defined in `requirements.txt`:
 
 - `certifi`
