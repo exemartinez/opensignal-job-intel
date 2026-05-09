@@ -1,0 +1,409 @@
+@startuml
+title LinkedIn Core - Focused Class Diagram
+
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam noteBackgroundColor #FFFCE8
+skinparam noteBorderColor #C8B97E
+skinparam stereotypeCBackgroundColor #F6F6F6
+skinparam stereotypeCBorderColor #666666
+
+package "Core Domain Inputs" {
+  enum JobSource {
+    +LINKEDIN
+  }
+
+  class JobRecord {
+    +source: JobSource
+    +company: str
+    +title: str
+    +description: str
+    +link: str
+    +collected_at: datetime
+    +external_job_id: str?
+    +post_datetime: datetime?
+    +stored_at: datetime?
+    +salary_text: str?
+    +location_text: str?
+    +workplace_type: str?
+    +post_age_text: str?
+    +post_age_days: int?
+    +seen: bool
+    +applied: bool
+    +normalized(): JobRecord
+    +dedupe_key: str
+  }
+
+  class ProfessionalCompass {
+    +target_roles: list[str]
+    +remote_only: bool
+    +search_max_post_age_days: int?
+    +search_workplace_types: list[str]?
+    +search_regions: list[str]?
+  }
+
+  class HarvestSchedule {
+    +window_start: time
+    +window_end: time
+    +max_queries: int
+    +max_pages_per_query: int
+    +empty_search_pages_threshold: int
+    +base_delay_seconds: float
+    +jitter_seconds: float
+    +sticky_caution_multiplier: float
+    +backoff_initial_seconds: float
+    +backoff_multiplier: float
+    +backoff_max_seconds: float
+    +summary_every_requests: int
+    +log_path: str
+    +missing_signal_policy: str
+  }
+}
+
+package "LinkedIn Acquisition" {
+  abstract class JobSourceAdapter {
+    +fetch_jobs(): list[JobRecord]
+  }
+
+  class LinkedInAcquisitionDiagnostics {
+    +requests: int
+    +search_pages: int
+    +job_detail_pages: int
+    +parse_failures: int
+    +dropped: int
+    +drops: list[str]
+    +extraction_mode_counts: dict[str, int]
+    +record_extraction_mode(mode: str): None
+    +as_dict(): dict[str, object]
+  }
+
+  class LinkedInExtractionSpec {
+    +version: int
+    +search_job_id_regex: str
+  }
+
+  class LinkedInJsonFileAdapter {
+    -_input_path: Path
+    +fetch_jobs(): list[JobRecord]
+    -_normalize_item(item: dict[str, Any], collected_at: datetime): JobRecord
+  }
+
+  class LinkedInScrapeAdapter {
+    -_compass: ProfessionalCompass
+    -_spec: LinkedInExtractionSpec
+    -_max_queries: int
+    -_max_pages_per_query: int
+    -_max_jobs: int
+    -_request_delay_seconds: float
+    -_capture_dir: Path?
+    -_write_fixture_path: Path?
+    -_cookies: str?
+    -_csrf: str?
+    -_llm: LocalLlmClient?
+    +diagnostics: LinkedInAcquisitionDiagnostics
+    +fetch_jobs(): list[JobRecord]
+    -_fetch_text(url: str, kind: str): str?
+    -_llm_fallback_extract(html: str, collected_at: datetime, fallback_link: str): JobRecord?
+  }
+}
+
+package "LinkedIn Extraction + Filtering" {
+  class LocalLlmClient {
+    -_base_url: str
+    -_model: str?
+    -_timeout_seconds: float
+    +extract_json(system_prompt: str, user_prompt: str): LlmJsonResult
+    -_post_json(url: str, payload: dict[str, Any]): LlmJsonResult
+  }
+
+  class LlmJsonResult {
+    +ok: bool
+    +data: dict[str, Any]?
+    +error: str?
+  }
+
+  class FetchResponse {
+    +url: str
+    +kind: str
+    +text: str?
+    +status_code: int?
+    +error: str?
+  }
+
+  class JobFetchOutcome {
+    +job: JobRecord?
+    +throttled: bool
+  }
+
+  class HarvestSearchPlan {
+    +query: str
+    +location: str?
+    +key: str
+  }
+
+  class FilterDecision {
+    +allowed: bool
+    +reason: str?
+  }
+}
+
+package "Harvest Orchestration" {
+  class HarvestResult {
+    +queries_processed: int
+    +search_pages: int
+    +detail_pages: int
+    +requests: int
+    +stored: int
+    +skipped_known_ids: int
+    +dropped_filtered: int
+    +dropped_parse_failures: int
+    +stale_stream_stops: int
+    +throttles: int
+    +as_dict(): dict[str, int]
+  }
+
+  class HarvestRunState {
+    +source: str
+    +throttle_events: int
+    +current_backoff_seconds: float
+    +sticky_caution_enabled: bool
+    +last_throttle_at: datetime?
+    +last_success_at: datetime?
+  }
+
+  class HarvestQueryState {
+    +source: str
+    +query: str
+    +next_start: int
+    +consecutive_empty_pages: int
+    +yielded_new_ids: int
+    +saw_stale_results: bool
+    +last_success_at: datetime?
+  }
+
+  class HarvestLogger {
+    -_file_path: Path
+    +log(message: str): None
+  }
+
+  class LinkedInNightlyHarvester {
+    -_compass: ProfessionalCompass
+    -_repository: SQLiteJobRepository
+    -_spec: LinkedInExtractionSpec
+    -_schedule: HarvestSchedule
+    -_capture_dir: Path?
+    -_max_jobs: int?
+    -_fetcher: Callable
+    -_sleep: Callable
+    -_cookies: str?
+    -_csrf: str?
+    -_llm: LocalLlmClient?
+    -_logger: HarvestLogger
+    -_run_state: HarvestRunState
+    -_result: HarvestResult
+    +run(): HarvestResult
+    -_run_query(plan: HarvestSearchPlan): None
+    -_fetch_and_extract_job(job_id: str, collected_at: datetime): JobFetchOutcome
+    -_request(url: str, kind: str): FetchResponse
+    -_fetch_text(url: str, kind: str): FetchResponse
+    -_apply_pacing_delay(): None
+    -_handle_throttle(): None
+    -_llm_fallback_extract(html: str, collected_at: datetime, fallback_link: str): JobRecord?
+    -_search_page_has_stale_results(html: str): bool
+    -_maybe_log_summary(): None
+    -_within_window(): bool
+    -_within_window_after(delay_seconds: float): bool
+    -_hit_max_jobs(): bool
+  }
+}
+
+package "Persistence + Runtime Ops" {
+  class SQLiteJobRepository {
+    -_db_path: Path
+    +initialize(): None
+    +upsert_job(job: JobRecord): None
+    +list_jobs(limit: int): list[JobRecord]
+    +count_jobs(): int
+    +existing_external_job_ids(source: JobSource, external_job_ids: list[str]): set[str]
+    +get_harvest_run_state(source: str): HarvestRunState
+    +save_harvest_run_state(state: HarvestRunState): None
+    +get_harvest_query_state(source: str, query: str): HarvestQueryState
+    +save_harvest_query_state(state: HarvestQueryState): None
+  }
+
+  class RepoPaths {
+    +root_dir: Path
+    +data_dir: Path
+    +db_path: Path
+    +cron_log_path: Path
+    +harvest_log_path: Path
+    +runner_pid_path: Path
+    +schedule_override_path: Path
+    +run_script_path: Path
+    +remove_one_shot_script_path: Path
+  }
+
+  class CronBlock {
+    +begin_marker: str
+    +end_marker: str
+    +entries: tuple[str, ...]
+  }
+
+  class CrontabManager {
+    +read_lines(): list[str]
+    +write_lines(lines: Iterable[str]): None
+    +remove_block(markers: list[tuple[str, str]]): list[str]
+    +upsert_block(block: CronBlock): list[str]
+  }
+
+  class HarvestProcessManager {
+    -_paths: RepoPaths
+    +active_matches(): list[str]
+    +is_running(): bool
+    +run_once(): int
+    -_read_active_pid(): int?
+    -_clear_pid_file(): None
+  }
+
+  class HarvestDatabaseViewer {
+    -_paths: RepoPaths
+    +show_recent_jobs(limit: int): int
+  }
+
+  class LogTailer {
+    +tail(paths: list[Path]): int
+  }
+
+  class HarvestCronEntryBuilder {
+    -_paths: RepoPaths
+    -_python_executable: str
+    +nightly_block(): CronBlock
+    +continuous_hourly_block(): CronBlock
+    +temporary_hourly_block(minute: int, day: int, month: int, start_hour: int, end_hour: int): CronBlock
+  }
+
+  class HarvestCronScripts {
+    -_script_path: Path
+    -_paths: RepoPaths
+    -_crontab: CrontabManager
+    -_processes: HarvestProcessManager
+    -_db: HarvestDatabaseViewer
+    -_tailer: LogTailer
+    -_cron_entries: HarvestCronEntryBuilder
+    +run(argv: list[str]): int
+    +harvest_status(): int
+    +install_nightly_harvest(): int
+    +install_continuous_hourly_harvest(): int
+    +remove_nightly_harvest(): int
+    +remove_one_shot_harvest(): int
+    +schedule_harvest_next_minute(): int
+  }
+}
+
+package "Runtime Entrypoints" {
+  class CliModule <<module>> {
+    +build_parser(): argparse.ArgumentParser
+    +main(): int
+    -_run_ingest(args: argparse.Namespace): int
+    -_run_harvest(args: argparse.Namespace): int
+  }
+
+  class "install_harvest_cron.py" as InstallHarvest <<script>>
+  class "install_continuous_hourly_harvest_cron.py" as InstallHourly <<script>>
+  class "remove_harvest_cron.py" as RemoveHarvest <<script>>
+  class "remove_one_shot_harvest_cron.py" as RemoveOneShot <<script>>
+  class "run_harvest_cron.py" as RunHarvest <<script>>
+  class "schedule_harvest_next_minute.py" as ScheduleHarvest <<script>>
+  class "harvest_status.py" as HarvestStatus <<script>>
+  class "show_recent_jobs.py" as ShowRecentJobs <<script>>
+  class "tail_harvest_logs.py" as TailHarvestLogs <<script>>
+}
+
+JobSourceAdapter <|-- LinkedInJsonFileAdapter
+JobSourceAdapter <|-- LinkedInScrapeAdapter
+
+LinkedInJsonFileAdapter --> JobRecord
+LinkedInScrapeAdapter --> ProfessionalCompass
+LinkedInScrapeAdapter --> LinkedInExtractionSpec
+LinkedInScrapeAdapter --> LinkedInAcquisitionDiagnostics
+LinkedInScrapeAdapter --> LocalLlmClient
+LinkedInScrapeAdapter --> JobRecord
+
+LinkedInNightlyHarvester --> ProfessionalCompass
+LinkedInNightlyHarvester --> SQLiteJobRepository
+LinkedInNightlyHarvester --> LinkedInExtractionSpec
+LinkedInNightlyHarvester --> HarvestSchedule
+LinkedInNightlyHarvester --> HarvestRunState
+LinkedInNightlyHarvester --> HarvestQueryState
+LinkedInNightlyHarvester --> HarvestResult
+LinkedInNightlyHarvester --> HarvestLogger
+LinkedInNightlyHarvester --> HarvestSearchPlan
+LinkedInNightlyHarvester --> FilterDecision
+LinkedInNightlyHarvester --> FetchResponse
+LinkedInNightlyHarvester --> JobFetchOutcome
+LinkedInNightlyHarvester --> LocalLlmClient
+LinkedInNightlyHarvester --> JobRecord
+
+SQLiteJobRepository --> JobRecord
+SQLiteJobRepository --> HarvestRunState
+SQLiteJobRepository --> HarvestQueryState
+
+HarvestProcessManager --> RepoPaths
+HarvestDatabaseViewer --> RepoPaths
+HarvestCronEntryBuilder --> RepoPaths
+HarvestCronEntryBuilder --> CronBlock
+HarvestCronScripts --> RepoPaths
+HarvestCronScripts --> CrontabManager
+HarvestCronScripts --> HarvestProcessManager
+HarvestCronScripts --> HarvestDatabaseViewer
+HarvestCronScripts --> LogTailer
+HarvestCronScripts --> HarvestCronEntryBuilder
+
+CliModule --> LinkedInJsonFileAdapter
+CliModule --> LinkedInScrapeAdapter
+CliModule --> LinkedInNightlyHarvester
+CliModule --> SQLiteJobRepository
+CliModule --> JobIngestionService
+CliModule --> JobCompassEvaluator
+
+InstallHarvest ..> HarvestCronScripts : delegates via run_script()
+InstallHourly ..> HarvestCronScripts : delegates via run_script()
+RemoveHarvest ..> HarvestCronScripts : delegates via run_script()
+RemoveOneShot ..> HarvestCronScripts : delegates via run_script()
+RunHarvest ..> HarvestCronScripts : delegates via run_script()
+ScheduleHarvest ..> HarvestCronScripts : delegates via run_script()
+HarvestStatus ..> HarvestCronScripts : delegates via run_script()
+ShowRecentJobs ..> HarvestCronScripts : delegates via run_script()
+TailHarvestLogs ..> HarvestCronScripts : delegates via run_script()
+
+note bottom of LinkedInScrapeAdapter
+  Primary refactor hotspot on the acquisition side.
+  It currently mixes:
+  - query derivation
+  - guest-page transport
+  - extraction fallback
+  - filtering
+  - capture writing
+  - fixture export
+end note
+
+note bottom of LinkedInNightlyHarvester
+  Primary refactor hotspot on the harvest side.
+  It currently mixes:
+  - query planning
+  - schedule/window policy
+  - pacing/backoff
+  - request execution
+  - filtering
+  - persistence coordination
+  - logging
+end note
+
+note bottom of HarvestCronScripts
+  Operational surface, not domain logic.
+  The script entrypoints are shown explicitly so the
+  runtime helper model is not confused with the OO core.
+end note
+
+@enduml

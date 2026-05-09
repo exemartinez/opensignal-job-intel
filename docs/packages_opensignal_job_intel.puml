@@ -1,0 +1,113 @@
+@startuml packages_opensignal_job_intel
+set namespaceSeparator none
+package "opensignal_job_intel" as opensignal_job_intel {
+}
+package "cli" as cli {
+}
+package "compass" as compass {
+}
+package "evaluation" as evaluation {
+}
+package "llm" as llm {
+}
+package "models" as models {
+}
+package "repositories" as repositories {
+}
+package "sqlite_jobs" as sqlite_jobs {
+}
+package "services" as services {
+}
+package "sources" as sources {
+}
+package "base" as base {
+}
+package "harvest_status" as harvest_status {
+}
+package "install_continuous_hourly_harvest_cron" as install_continuous_hourly_harvest_cron {
+}
+package "install_harvest_cron" as install_harvest_cron {
+}
+package "linkedin" as linkedin {
+}
+package "linkedin_acquire" as linkedin_acquire {
+}
+package "linkedin_extraction" as linkedin_extraction {
+}
+package "linkedin_harvest" as linkedin_harvest {
+}
+package "linkedin_harvest_ops" as linkedin_harvest_ops {
+}
+package "remove_harvest_cron" as remove_harvest_cron {
+}
+package "remove_one_shot_harvest_cron" as remove_one_shot_harvest_cron {
+}
+package "run_harvest_cron" as run_harvest_cron {
+}
+package "schedule_harvest_next_minute" as schedule_harvest_next_minute {
+}
+package "show_recent_jobs" as show_recent_jobs {
+}
+package "tail_harvest_logs" as tail_harvest_logs {
+}
+opensignal_job_intel +-- cli
+opensignal_job_intel +-- compass
+opensignal_job_intel +-- evaluation
+opensignal_job_intel +-- llm
+opensignal_job_intel +-- models
+opensignal_job_intel +-- repositories
+opensignal_job_intel +-- services
+opensignal_job_intel +-- sources
+repositories +-- sqlite_jobs
+sources +-- base
+sources +-- harvest_status
+sources +-- install_continuous_hourly_harvest_cron
+sources +-- install_harvest_cron
+sources +-- linkedin
+sources +-- linkedin_acquire
+sources +-- linkedin_extraction
+sources +-- linkedin_harvest
+sources +-- linkedin_harvest_ops
+sources +-- remove_harvest_cron
+sources +-- remove_one_shot_harvest_cron
+sources +-- run_harvest_cron
+sources +-- schedule_harvest_next_minute
+sources +-- show_recent_jobs
+sources +-- tail_harvest_logs
+cli --> compass
+cli --> evaluation
+cli --> sqlite_jobs
+cli --> services
+cli --> linkedin
+cli --> linkedin_harvest
+compass --> models
+evaluation --> models
+sqlite_jobs --> models
+services --> evaluation
+services --> models
+services --> sqlite_jobs
+services --> base
+base --> models
+harvest_status --> linkedin_harvest_ops
+install_continuous_hourly_harvest_cron --> linkedin_harvest_ops
+install_harvest_cron --> linkedin_harvest_ops
+linkedin --> models
+linkedin --> base
+linkedin --> linkedin_acquire
+linkedin_acquire --> llm
+linkedin_acquire --> models
+linkedin_acquire --> base
+linkedin_acquire --> linkedin_extraction
+linkedin_extraction --> models
+linkedin_harvest --> llm
+linkedin_harvest --> models
+linkedin_harvest --> sqlite_jobs
+linkedin_harvest --> linkedin_acquire
+linkedin_harvest --> linkedin_extraction
+remove_harvest_cron --> linkedin_harvest_ops
+remove_one_shot_harvest_cron --> linkedin_harvest_ops
+run_harvest_cron --> linkedin_harvest_ops
+schedule_harvest_next_minute --> linkedin_harvest_ops
+show_recent_jobs --> linkedin_harvest_ops
+tail_harvest_logs --> linkedin_harvest_ops
+@enduml
