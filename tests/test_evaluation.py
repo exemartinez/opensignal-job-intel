@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from opensignal_job_intel.evaluation import JobCompassEvaluator
-from opensignal_job_intel.models import JobRecord, JobSource, utc_now
+from src.core_domain_inputs import JobCompassEvaluator, JobRecord, JobSource, utc_now
 from tests.helpers import load_default_compass
 
 

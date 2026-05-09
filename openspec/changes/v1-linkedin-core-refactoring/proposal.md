@@ -23,6 +23,7 @@ The archived test-coverage foundation now gives this repository enough regressio
   - operational runtime support for cron/status/log helpers
 - Reduce duplicated logic across acquisition and harvest flows, especially around query derivation, URL construction, filtering decisions, diagnostics, export/fixture serialization, and runtime helper concerns.
 - Keep externally visible CLI behavior, ingestion behavior, harvest behavior, persistence behavior, and script entrypoint behavior stable while internal modules, classes, and package structure are reorganized.
+- Clarify ingestion persistence reporting so command output distinguishes newly inserted jobs from updates to existing deduplicated rows.
 - Keep runtime entrypoints thin. When executable entrypoints are still required, they should delegate immediately into class-owned behavior rather than accumulating operational logic in free functions or script bodies.
 - Add or maintain module-level Python docstrings at the beginning of each refactored module describing its responsibility and author attribution (`Ezequiel H. Martinez`).
 - Use `docs/linkedin_core_focused_class_diagram.puml` as the guiding structural reference for the intended organization during the refactor.

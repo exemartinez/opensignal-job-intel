@@ -1,0 +1,29 @@
+@startuml packages_src
+set namespaceSeparator none
+package "src" as src {
+}
+package "src.core_domain_inputs" as src.core_domain_inputs {
+}
+package "src.harvest_orchestration" as src.harvest_orchestration {
+}
+package "src.linkedin_acquisition" as src.linkedin_acquisition {
+}
+package "src.linkedin_extraction_filtering" as src.linkedin_extraction_filtering {
+}
+package "src.persistence_runtime_ops" as src.persistence_runtime_ops {
+}
+package "src.runtime_entrypoints" as src.runtime_entrypoints {
+}
+src.harvest_orchestration --> src.core_domain_inputs
+src.harvest_orchestration --> src.linkedin_acquisition
+src.harvest_orchestration --> src.linkedin_extraction_filtering
+src.harvest_orchestration --> src.persistence_runtime_ops
+src.linkedin_acquisition --> src.core_domain_inputs
+src.linkedin_acquisition --> src.linkedin_extraction_filtering
+src.linkedin_extraction_filtering --> src.core_domain_inputs
+src.persistence_runtime_ops --> src.core_domain_inputs
+src.runtime_entrypoints --> src.core_domain_inputs
+src.runtime_entrypoints --> src.harvest_orchestration
+src.runtime_entrypoints --> src.linkedin_acquisition
+src.runtime_entrypoints --> src.persistence_runtime_ops
+@enduml

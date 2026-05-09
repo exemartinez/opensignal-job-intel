@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from opensignal_job_intel.models import JobRecord, JobSource, normalize_source_link, utc_now
+from src.core_domain_inputs import JobRecord, JobSource, normalize_source_link, utc_now
 
 
 class ModelTests(unittest.TestCase):

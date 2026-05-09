@@ -22,34 +22,34 @@ The codebase should favor:
 - reduced duplication across acquisition, harvest, and operational flows
 - behavior-oriented tests that allow package and module structure to change safely
 
+The approved structural target for the current LinkedIn refactor is a direct
+Python package named `src` with these top-level modules:
+
+- `core_domain_inputs.py`
+- `linkedin_acquisition.py`
+- `linkedin_extraction_filtering.py`
+- `harvest_orchestration.py`
+- `persistence_runtime_ops.py`
+- `runtime_entrypoints.py`
+
 ## Current Responsibility Boundaries
 
 Use the current structure intentionally:
 
 - `main.py`
   - CLI launcher only
-- `opensignal_job_intel/cli.py`
-  - command parsing and top-level workflow wiring
-- `opensignal_job_intel/compass.py`
-  - professional-compass loading and normalization
-- `opensignal_job_intel/models.py`
-  - canonical data models and shared domain state
-- `opensignal_job_intel/evaluation.py`
-  - rule-based job evaluation
-- `opensignal_job_intel/repositories/sqlite_jobs.py`
-  - persistence and schema evolution
-- `opensignal_job_intel/sources/linkedin.py`
-  - fixture-backed LinkedIn adapter
-- `opensignal_job_intel/sources/linkedin_acquire.py`
-  - acquisition behavior for interactive scraping
-- `opensignal_job_intel/sources/linkedin_extraction.py`
-  - extraction/parsing from LinkedIn search/detail HTML
-- `opensignal_job_intel/sources/linkedin_harvest.py`
-  - unattended harvest orchestration
-- `opensignal_job_intel/sources/linkedin_harvest_ops.py`
-  - operational helpers for cron/runtime support
-- thin Python entrypoints in `opensignal_job_intel/sources/`
-  - dispatch wrappers only
+- `src/runtime_entrypoints.py`
+  - command parsing and top-level runtime dispatch
+- `src/core_domain_inputs.py`
+  - professional-compass loading, canonical data models, evaluation, and ingestion workflow
+- `src/linkedin_acquisition.py`
+  - fixture-backed acquisition, live LinkedIn acquisition, diagnostics, and fixture export
+- `src/linkedin_extraction_filtering.py`
+  - extraction/parsing from LinkedIn search/detail HTML plus filtering helpers
+- `src/harvest_orchestration.py`
+  - unattended harvest orchestration, schedule loading, pacing, and stop rules
+- `src/persistence_runtime_ops.py`
+  - SQLite persistence, cron/runtime support, and operational commands
 
 
 ## Boundary Rules - Division of concerns 

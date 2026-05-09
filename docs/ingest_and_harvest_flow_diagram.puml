@@ -1,5 +1,5 @@
 @startuml
-title Ingest + Harvest Flow Diagram
+title Ingest + Harvest Flow Diagram (`src` Target)
 
 skinparam shadowing false
 skinparam noteBackgroundColor #FFFCE8
@@ -14,7 +14,7 @@ skinparam activity {
 start
 
 partition "CLI Entry" {
-  :`main.py` -> `cli.main()`;
+  :`main.py` -> `src.runtime_entrypoints.main()`;
   if (command?) then (ingest-linkedin)
     :parse ingest args;
   else (harvest-linkedin)
@@ -140,11 +140,13 @@ endif
 stop
 
 note right
-  Runtime scripts under `opensignal_job_intel/sources/*.py`
-  are not part of the ingest/harvest domain flow.
+  Runtime commands are not part of the ingest/harvest domain flow.
   They delegate into `HarvestCronScripts`, which installs
   cron blocks, launches guarded harvest runs, and exposes
   operational status/log helpers.
+  The runtime surface is:
+  - `src/runtime_entrypoints.py`
+  - `src/persistence_runtime_ops.py`
 end note
 
 @enduml

@@ -1,8 +1,14 @@
+"""Harvest orchestration for LinkedIn acquisition.
+
+Author: Ezequiel H. Martinez
+"""
+
 from __future__ import annotations
 
 import json
 import os
 import random
+import re
 import ssl
 import time
 import urllib.error
@@ -16,8 +22,7 @@ from urllib.parse import urlencode
 
 import yaml
 
-from opensignal_job_intel.llm import LocalLlmClient
-from opensignal_job_intel.models import (
+from src.core_domain_inputs import (
     HarvestQueryState,
     HarvestRunState,
     HarvestSchedule,
@@ -26,17 +31,14 @@ from opensignal_job_intel.models import (
     ProfessionalCompass,
     utc_now,
 )
-from opensignal_job_intel.repositories.sqlite_jobs import SQLiteJobRepository
-from opensignal_job_intel.sources.linkedin_acquire import (
-    _derive_region,
-    _normalize_str_list,
-    _ssl_context,
-)
-from opensignal_job_intel.sources.linkedin_extraction import (
+from src.linkedin_acquisition import _derive_region, _normalize_str_list, _ssl_context
+from src.linkedin_extraction_filtering import (
+    LocalLlmClient,
     extract_job_from_detail_html,
     extract_job_ids_from_search_html,
     load_extraction_spec,
 )
+from src.persistence_runtime_ops import SQLiteJobRepository
 
 
 DEFAULT_SCHEDULE_PATH = "config/extraction_schedule.template.yaml"
@@ -116,6 +118,8 @@ class HarvestLogger:
 
 
 class LinkedInNightlyHarvester:
+    """Run the LinkedIn harvest loop with pacing, filtering, and state persistence."""
+
     def __init__(
         self,
         *,
@@ -304,13 +308,7 @@ class LinkedInNightlyHarvester:
                     _write_capture(self._capture_dir, f"search_{safe}.html", text)
                 return FetchResponse(url=url, kind=kind, text=text, status_code=response.status)
         except urllib.error.HTTPError as exc:
-            return FetchResponse(
-                url=url,
-                kind=kind,
-                text=None,
-                status_code=exc.code,
-                error=f"http_{exc.code}",
-            )
+            return FetchResponse(url=url, kind=kind, text=None, status_code=exc.code, error=f"http_{exc.code}")
         except ssl.SSLCertVerificationError as exc:
             return FetchResponse(url=url, kind=kind, text=None, error=f"ssl_verify_failed:{exc}")
         except urllib.error.URLError as exc:
@@ -343,7 +341,10 @@ class LinkedInNightlyHarvester:
         self._repository.save_harvest_run_state(self._run_state)
 
     def _llm_fallback_extract(
-        self, html: str, collected_at: datetime, fallback_link: str
+        self,
+        html: str,
+        collected_at: datetime,
+        fallback_link: str,
     ) -> JobRecord | None:
         if not self._llm:
             return None
@@ -411,6 +412,52 @@ class LinkedInNightlyHarvester:
 
     def _hit_max_jobs(self) -> bool:
         return self._max_jobs is not None and self._result.stored >= self._max_jobs
+
+
+class HarvestScheduleResolver:
+    """Resolve and load harvest schedules for runtime orchestration."""
+
+    @staticmethod
+    def resolve(path: str | None) -> str:
+        return resolve_harvest_schedule_path(path)
+
+    @staticmethod
+    def load(path: str | Path) -> HarvestSchedule:
+        return load_harvest_schedule(path)
+
+
+class HarvestPlanBuilder:
+    """Derive search plans and location scopes from the professional compass."""
+
+    @staticmethod
+    def derive_search_plans(compass: ProfessionalCompass, max_queries: int) -> list[HarvestSearchPlan]:
+        return _derive_search_plans(compass, max_queries)
+
+    @staticmethod
+    def derive_location_labels(regions: list[str] | None) -> list[str]:
+        return _derive_location_labels(regions)
+
+    @staticmethod
+    def build_search_url(*, query: str, start: int, location: str | None, compass: ProfessionalCompass) -> str:
+        return _build_harvest_search_url(
+            HarvestSearchPlan(query=query, location=location),
+            start,
+            compass,
+        )
+
+
+class HarvestFilterPolicy:
+    """Evaluate harvest filter decisions for canonical jobs."""
+
+    @staticmethod
+    def evaluate(job: JobRecord, compass: ProfessionalCompass, missing_signal_policy: str) -> FilterDecision:
+        return _evaluate_harvest_filters(
+            job=job,
+            max_post_age_days=compass.search_max_post_age_days,
+            allowed_workplace_types=_normalize_str_list(compass.search_workplace_types),
+            allowed_regions=_normalize_region_values(compass.search_regions),
+            missing_signal_policy=missing_signal_policy,
+        )
 
 
 def load_harvest_schedule(path: str | Path) -> HarvestSchedule:
@@ -484,9 +531,7 @@ def _evaluate_harvest_filters(
     return FilterDecision(True)
 
 
-def _derive_search_plans(
-    compass: ProfessionalCompass, limit: int
-) -> list[HarvestSearchPlan]:
+def _derive_search_plans(compass: ProfessionalCompass, limit: int) -> list[HarvestSearchPlan]:
     roles = [role.strip() for role in compass.target_roles if role.strip()]
     deduped_roles = list(dict.fromkeys(roles))
     locations = _derive_location_labels(compass.search_regions)
@@ -530,14 +575,14 @@ def _normalize_region_values(regions: list[str] | None) -> list[str] | None:
     normalized = _normalize_str_list(regions)
     if normalized is None:
         return None
-    aliases = {
-        "canada": "ca",
-    }
+    aliases = {"canada": "ca"}
     return [aliases.get(region, region) for region in normalized]
 
 
 def _build_harvest_search_url(
-    plan: HarvestSearchPlan, start: int, compass: ProfessionalCompass
+    plan: HarvestSearchPlan,
+    start: int,
+    compass: ProfessionalCompass,
 ) -> str:
     params = {
         "keywords": plan.query,
@@ -551,8 +596,6 @@ def _build_harvest_search_url(
 
 
 def _extract_relative_age_texts(html: str) -> list[str]:
-    import re
-
     matches = re.findall(
         r"(just now|today|\d+\s+(?:minute|hour|day|week|month|year)s?\s+ago)",
         html,
@@ -562,8 +605,6 @@ def _extract_relative_age_texts(html: str) -> list[str]:
 
 
 def _parse_post_age_days(value: str | None) -> int | None:
-    import re
-
     if not value:
         return None
     normalized = re.sub(r"\s+", " ", value.strip().lower())
@@ -590,7 +631,7 @@ def _parse_post_age_days(value: str | None) -> int | None:
 def _parse_clock(value: str) -> time_of_day:
     try:
         hour, minute = [int(part) for part in str(value).split(":", 1)]
-    except Exception as exc:  # pragma: no cover - defensive parse error path
+    except Exception as exc:  # pragma: no cover
         raise ValueError(f"Invalid clock value: {value}") from exc
     return time_of_day(hour=hour, minute=minute)
 
@@ -604,3 +645,21 @@ def _time_within_window(now: time_of_day, start: time_of_day, end: time_of_day) 
 def _write_capture(dir_path: Path, name: str, content: str) -> None:
     dir_path.mkdir(parents=True, exist_ok=True)
     (dir_path / name).write_text(content, encoding="utf-8")
+
+
+__all__ = [
+    "DEFAULT_SCHEDULE_PATH",
+    "LOCAL_SCHEDULE_OVERRIDE_PATH",
+    "FetchResponse",
+    "FilterDecision",
+    "HarvestFilterPolicy",
+    "HarvestLogger",
+    "HarvestPlanBuilder",
+    "HarvestResult",
+    "HarvestScheduleResolver",
+    "HarvestSearchPlan",
+    "JobFetchOutcome",
+    "LinkedInNightlyHarvester",
+    "load_harvest_schedule",
+    "resolve_harvest_schedule_path",
+]

@@ -1,5 +1,5 @@
 @startuml
-title LinkedIn Core - Focused Class Diagram
+title LinkedIn Core - Focused Class Diagram (`src` Target)
 
 skinparam classAttributeIconSize 0
 skinparam shadowing false
@@ -9,7 +9,7 @@ skinparam noteBorderColor #C8B97E
 skinparam stereotypeCBackgroundColor #F6F6F6
 skinparam stereotypeCBorderColor #666666
 
-package "Core Domain Inputs" {
+package "src/core_domain_inputs.py" {
   enum JobSource {
     +LINKEDIN
   }
@@ -61,7 +61,7 @@ package "Core Domain Inputs" {
   }
 }
 
-package "LinkedIn Acquisition" {
+package "src/linkedin_acquisition.py" {
   abstract class JobSourceAdapter {
     +fetch_jobs(): list[JobRecord]
   }
@@ -108,7 +108,7 @@ package "LinkedIn Acquisition" {
   }
 }
 
-package "LinkedIn Extraction + Filtering" {
+package "src/linkedin_extraction_filtering.py" {
   class LocalLlmClient {
     -_base_url: str
     -_model: str?
@@ -148,7 +148,7 @@ package "LinkedIn Extraction + Filtering" {
   }
 }
 
-package "Harvest Orchestration" {
+package "src/harvest_orchestration.py" {
   class HarvestResult {
     +queries_processed: int
     +search_pages: int
@@ -218,7 +218,7 @@ package "Harvest Orchestration" {
   }
 }
 
-package "Persistence + Runtime Ops" {
+package "src/persistence_runtime_ops.py" {
   class SQLiteJobRepository {
     -_db_path: Path
     +initialize(): None
@@ -301,7 +301,7 @@ package "Persistence + Runtime Ops" {
   }
 }
 
-package "Runtime Entrypoints" {
+package "src/runtime_entrypoints.py" {
   class CliModule <<module>> {
     +build_parser(): argparse.ArgumentParser
     +main(): int
@@ -402,8 +402,9 @@ end note
 
 note bottom of HarvestCronScripts
   Operational surface, not domain logic.
-  The script entrypoints are shown explicitly so the
-  runtime helper model is not confused with the OO core.
+  Runtime command dispatch lives in `src/runtime_entrypoints.py`.
+  This class owns cron installation, guarded harvest runs,
+  and operational status/log helpers.
 end note
 
 @enduml

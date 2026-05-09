@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from opensignal_job_intel import cli
+from src import runtime_entrypoints as cli
 
 
 class CliTests(unittest.TestCase):
@@ -15,8 +15,8 @@ class CliTests(unittest.TestCase):
         parser.parse_args.return_value = argparse.Namespace(command="ingest-linkedin")
 
         with (
-            patch("opensignal_job_intel.cli.build_parser", return_value=parser),
-            patch("opensignal_job_intel.cli._run_ingest", return_value=7) as run_ingest,
+            patch("src.runtime_entrypoints.build_parser", return_value=parser),
+            patch("src.runtime_entrypoints._run_ingest", return_value=7) as run_ingest,
         ):
             result = cli.main()
 
@@ -28,8 +28,8 @@ class CliTests(unittest.TestCase):
         parser.parse_args.return_value = argparse.Namespace(command="harvest-linkedin")
 
         with (
-            patch("opensignal_job_intel.cli.build_parser", return_value=parser),
-            patch("opensignal_job_intel.cli._run_harvest", return_value=9) as run_harvest,
+            patch("src.runtime_entrypoints.build_parser", return_value=parser),
+            patch("src.runtime_entrypoints._run_harvest", return_value=9) as run_harvest,
         ):
             result = cli.main()
 
@@ -50,16 +50,16 @@ class CliTests(unittest.TestCase):
         repository = Mock()
         repository.count_jobs.return_value = 3
         compass = object()
-        result = SimpleNamespace(fetched=2, evaluations=[])
+        result = SimpleNamespace(fetched=2, stored=2, inserted=1, updated=1, evaluations=[])
 
         with (
-            patch("opensignal_job_intel.cli.SQLiteJobRepository", return_value=repository),
-            patch("opensignal_job_intel.cli.load_professional_compass", return_value=compass),
-            patch("opensignal_job_intel.cli.LinkedInJsonFileAdapter", return_value="fixture-adapter") as json_adapter,
-            patch("opensignal_job_intel.cli.LinkedInScrapeAdapter") as scrape_adapter,
-            patch("opensignal_job_intel.cli.JobCompassEvaluator", return_value="evaluator") as evaluator,
-            patch("opensignal_job_intel.cli.JobIngestionService") as service_cls,
-            patch("builtins.print"),
+            patch("src.runtime_entrypoints.SQLiteJobRepository", return_value=repository),
+            patch("src.runtime_entrypoints.load_professional_compass", return_value=compass),
+            patch("src.runtime_entrypoints.LinkedInJsonFileAdapter", return_value="fixture-adapter") as json_adapter,
+            patch("src.runtime_entrypoints.LinkedInScrapeAdapter") as scrape_adapter,
+            patch("src.runtime_entrypoints.JobCompassEvaluator", return_value="evaluator") as evaluator,
+            patch("src.runtime_entrypoints.JobIngestionService") as service_cls,
+            patch("builtins.print") as print_mock,
         ):
             service = service_cls.return_value
             service.ingest.return_value = result
@@ -76,6 +76,7 @@ class CliTests(unittest.TestCase):
             evaluator="evaluator",
         )
         service.ingest.assert_called_once_with()
+        self.assertEqual(2, print_mock.call_count)
 
     def test_run_ingest_uses_live_scrape_adapter_without_source_file(self) -> None:
         args = argparse.Namespace(
@@ -91,15 +92,15 @@ class CliTests(unittest.TestCase):
         repository = Mock()
         repository.count_jobs.return_value = 0
         compass = object()
-        result = SimpleNamespace(fetched=0, evaluations=[])
+        result = SimpleNamespace(fetched=0, stored=0, inserted=0, updated=0, evaluations=[])
 
         with (
-            patch("opensignal_job_intel.cli.SQLiteJobRepository", return_value=repository),
-            patch("opensignal_job_intel.cli.load_professional_compass", return_value=compass),
-            patch("opensignal_job_intel.cli.LinkedInJsonFileAdapter") as json_adapter,
-            patch("opensignal_job_intel.cli.LinkedInScrapeAdapter", return_value="scrape-adapter") as scrape_adapter,
-            patch("opensignal_job_intel.cli.JobCompassEvaluator", return_value="evaluator"),
-            patch("opensignal_job_intel.cli.JobIngestionService") as service_cls,
+            patch("src.runtime_entrypoints.SQLiteJobRepository", return_value=repository),
+            patch("src.runtime_entrypoints.load_professional_compass", return_value=compass),
+            patch("src.runtime_entrypoints.LinkedInJsonFileAdapter") as json_adapter,
+            patch("src.runtime_entrypoints.LinkedInScrapeAdapter", return_value="scrape-adapter") as scrape_adapter,
+            patch("src.runtime_entrypoints.JobCompassEvaluator", return_value="evaluator"),
+            patch("src.runtime_entrypoints.JobIngestionService") as service_cls,
             patch("builtins.print"),
         ):
             service_cls.return_value.ingest.return_value = result
@@ -131,11 +132,11 @@ class CliTests(unittest.TestCase):
         result = SimpleNamespace(as_dict=lambda: {"stored": 4})
 
         with (
-            patch("opensignal_job_intel.cli.SQLiteJobRepository", return_value=repository),
-            patch("opensignal_job_intel.cli.load_professional_compass", return_value=compass),
-            patch("opensignal_job_intel.cli.resolve_harvest_schedule_path", return_value="config/extraction_schedule.yaml") as resolve_schedule,
-            patch("opensignal_job_intel.cli.load_harvest_schedule", return_value=schedule) as load_schedule,
-            patch("opensignal_job_intel.cli.LinkedInNightlyHarvester") as harvester_cls,
+            patch("src.runtime_entrypoints.SQLiteJobRepository", return_value=repository),
+            patch("src.runtime_entrypoints.load_professional_compass", return_value=compass),
+            patch("src.runtime_entrypoints.resolve_harvest_schedule_path", return_value="config/extraction_schedule.yaml") as resolve_schedule,
+            patch("src.runtime_entrypoints.load_harvest_schedule", return_value=schedule) as load_schedule,
+            patch("src.runtime_entrypoints.LinkedInNightlyHarvester") as harvester_cls,
             patch("builtins.print") as print_mock,
         ):
             harvester_cls.return_value.run.return_value = result
@@ -164,6 +165,53 @@ class CliTests(unittest.TestCase):
 
         self.assertTrue(schedule_actions)
         self.assertIsInstance(Path("config/extraction_schedule.yaml"), Path)
+
+    def test_run_ingest_reports_inserted_and_updated_counts(self) -> None:
+        args = argparse.Namespace(
+            compass_file="profiles/professional_compass.json",
+            source_file="sample_linkedin_jobs.json",
+            extraction_spec="config/linkedin_extraction.template.json",
+            max_jobs=30,
+            capture_dir=None,
+            write_fixture=None,
+            db_path="data/jobs.db",
+            limit=1,
+        )
+        repository = Mock()
+        repository.count_jobs.return_value = 1728
+        compass = object()
+        evaluator = Mock()
+        evaluator.as_dict.return_value = {"company": "Synchro"}
+        result = SimpleNamespace(
+            fetched=3,
+            stored=3,
+            inserted=0,
+            updated=3,
+            evaluations=[object()],
+        )
+
+        with (
+            patch("src.runtime_entrypoints.SQLiteJobRepository", return_value=repository),
+            patch("src.runtime_entrypoints.load_professional_compass", return_value=compass),
+            patch("src.runtime_entrypoints.LinkedInJsonFileAdapter", return_value="fixture-adapter"),
+            patch("src.runtime_entrypoints.JobCompassEvaluator", return_value=evaluator),
+            patch("src.runtime_entrypoints.JobIngestionService") as service_cls,
+            patch("builtins.print") as print_mock,
+        ):
+            service_cls.return_value.ingest.return_value = result
+            exit_code = cli._run_ingest(args)
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual(
+            "Loaded compass from profiles/professional_compass.json. "
+            "Persisted 3 LinkedIn jobs into data/jobs.db (new: 0, updated: 3). "
+            "Stored records: 1728.",
+            print_mock.call_args_list[0].args[0],
+        )
+        self.assertEqual(
+            '{"persistence_summary": {"persisted": 3, "inserted": 0, "updated": 3, "stored_records": 1728}}',
+            print_mock.call_args_list[1].args[0],
+        )
 
 
 if __name__ == "__main__":

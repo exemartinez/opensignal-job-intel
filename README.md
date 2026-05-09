@@ -68,7 +68,7 @@ env PATH=/usr/local/opt/node@20/bin:$PATH openspec validate
 ## Repository Structure
 
 - `main.py`: CLI launcher
-- `opensignal_job_intel/`: Python package with models, adapters, repository, service, and CLI
+- `src/`: Python package with the full runtime, LinkedIn core, persistence, and CLI composition
 - `profiles/`: local professional compass input plus a committed template
 - `tests/`: `unittest` coverage for normalization and SQLite persistence behavior
 - `openspec/`: spec-first project artifacts managed by OpenSpec
@@ -100,6 +100,17 @@ The current implementation includes:
 - a CLI workflow to ingest and score stored jobs locally
 
 This keeps LinkedIn ingestion isolated from any browser automation, scraping stack, or official API dependency while still making the ingestion boundary testable.
+
+## Refactor Target
+
+The active LinkedIn core refactor is converging toward these top-level modules:
+
+- `src/core_domain_inputs.py`
+- `src/linkedin_acquisition.py`
+- `src/linkedin_extraction_filtering.py`
+- `src/harvest_orchestration.py`
+- `src/persistence_runtime_ops.py`
+- `src/runtime_entrypoints.py`
 
 ## First-Run Workflow
 
@@ -156,6 +167,10 @@ Optional flags:
 - `--capture-dir data/linkedin_captures` to persist raw HTML captures locally for debugging
 - `--write-fixture data/linkedin_fixture.json` to write a local fixture extracted from live acquisition
 
+Ingestion output reports both the total persisted jobs and the persistence
+breakdown, so a run that refreshes existing deduplicated rows will show
+`new: X, updated: Y` instead of implying every persisted job created a new row.
+
 Nightly harvest mode:
 
 ```bash
@@ -172,26 +187,26 @@ Schedule precedence for harvest mode:
 
 The nightly harvester writes verbose timestamped logs to the configured `.log` file and persists resume state in SQLite so the next run can continue where the previous one stopped.
 
-Operational helper scripts:
+Operational runtime commands:
 
 ```bash
-python3.11 opensignal_job_intel/sources/install_continuous_hourly_harvest_cron.py
-python3.11 opensignal_job_intel/sources/install_harvest_cron.py
-python3.11 opensignal_job_intel/sources/remove_harvest_cron.py
-python3.11 opensignal_job_intel/sources/run_harvest_cron.py
-python3.11 opensignal_job_intel/sources/harvest_status.py
-python3.11 opensignal_job_intel/sources/show_recent_jobs.py 25
-python3.11 opensignal_job_intel/sources/tail_harvest_logs.py
+python3.11 src/runtime_entrypoints.py install-continuous-hourly-harvest-cron
+python3.11 src/runtime_entrypoints.py install-harvest-cron
+python3.11 src/runtime_entrypoints.py remove-harvest-cron
+python3.11 src/runtime_entrypoints.py run-harvest-cron
+python3.11 src/runtime_entrypoints.py harvest-status
+python3.11 src/runtime_entrypoints.py show-recent-jobs 25
+python3.11 src/runtime_entrypoints.py tail-harvest-logs
 ```
 
-These source-specific Python entrypoints keep scheduling external to the main harvest application while providing a repo-owned way to install cron entries, trigger a guarded run, and inspect harvest state.
+These runtime commands keep scheduling external to the main harvest application while providing a repo-owned way to install cron entries, trigger a guarded run, and inspect harvest state.
 
 Notes:
 
 - Install the cron helper from the exact Python environment you want cron to use. The installed cron line captures that interpreter as an absolute path.
-- `install_continuous_hourly_harvest_cron.py` installs the hourly cron block.
-- `install_harvest_cron.py` installs the nightly cron block.
-- `remove_harvest_cron.py` removes the nightly cron block only.
+- `install-continuous-hourly-harvest-cron` installs the hourly cron block.
+- `install-harvest-cron` installs the nightly cron block.
+- `remove-harvest-cron` removes nightly and hourly harvest blocks.
 
 ## Compass Search Filters
 

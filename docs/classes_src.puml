@@ -1,0 +1,309 @@
+@startuml classes_src
+set namespaceSeparator none
+class "Clock" as src.core_domain_inputs.Clock {
+  utc_now() -> datetime
+}
+class "CronBlock" as src.persistence_runtime_ops.CronBlock {
+  begin_marker : str
+  end_marker : str
+  entries : tuple[str, ...]
+}
+class "CrontabManager" as src.persistence_runtime_ops.CrontabManager {
+  read_lines() -> list[str]
+  remove_block(markers: list[tuple[str, str]]) -> list[str]
+  upsert_block(block: CronBlock) -> list[str]
+  write_lines(lines: Iterable[str]) -> None
+}
+class "FetchResponse" as src.harvest_orchestration.FetchResponse {
+  error : str | None
+  kind : str
+  status_code : int | None
+  text : str | None
+  url : str
+}
+class "FilterDecision" as src.harvest_orchestration.FilterDecision {
+  allowed : bool
+  reason : str | None
+}
+class "HarvestCronEntryBuilder" as src.persistence_runtime_ops.HarvestCronEntryBuilder {
+  continuous_hourly_block() -> CronBlock
+  nightly_block() -> CronBlock
+  temporary_hourly_block() -> CronBlock
+}
+class "HarvestCronScripts" as src.persistence_runtime_ops.HarvestCronScripts {
+  harvest_status() -> int
+  install_continuous_hourly_harvest() -> int
+  install_nightly_harvest() -> int
+  remove_nightly_harvest() -> int
+  remove_one_shot_harvest() -> int
+  run(argv: list[str]) -> int
+  schedule_harvest_next_minute() -> int
+}
+class "HarvestDatabaseViewer" as src.persistence_runtime_ops.HarvestDatabaseViewer {
+  show_recent_jobs(limit: int) -> int
+}
+class "HarvestFilterPolicy" as src.harvest_orchestration.HarvestFilterPolicy {
+  evaluate(job: JobRecord, compass: ProfessionalCompass, missing_signal_policy: str) -> FilterDecision
+}
+class "HarvestLogger" as src.harvest_orchestration.HarvestLogger {
+  log(message: str) -> None
+}
+class "HarvestPlanBuilder" as src.harvest_orchestration.HarvestPlanBuilder {
+  build_search_url() -> str
+  derive_location_labels(regions: list[str] | None) -> list[str]
+  derive_search_plans(compass: ProfessionalCompass, max_queries: int) -> list[HarvestSearchPlan]
+}
+class "HarvestProcessManager" as src.persistence_runtime_ops.HarvestProcessManager {
+  active_matches() -> list[str]
+  is_running() -> bool
+  run_once() -> int
+}
+class "HarvestQueryState" as src.core_domain_inputs.HarvestQueryState {
+  consecutive_empty_pages : int
+  last_success_at : datetime | None
+  next_start : int
+  query : str
+  saw_stale_results : bool
+  source : str
+  yielded_new_ids : int
+}
+class "HarvestResult" as src.harvest_orchestration.HarvestResult {
+  detail_pages : int
+  dropped_filtered : int
+  dropped_parse_failures : int
+  queries_processed : int
+  requests : int
+  search_pages : int
+  skipped_known_ids : int
+  stale_stream_stops : int
+  stored : int
+  throttles : int
+  as_dict() -> dict[str, int]
+}
+class "HarvestRunState" as src.core_domain_inputs.HarvestRunState {
+  current_backoff_seconds : float
+  last_success_at : datetime | None
+  last_throttle_at : datetime | None
+  source : str
+  sticky_caution_enabled : bool
+  throttle_events : int
+}
+class "HarvestSchedule" as src.core_domain_inputs.HarvestSchedule {
+  backoff_initial_seconds : float
+  backoff_max_seconds : float
+  backoff_multiplier : float
+  base_delay_seconds : float
+  empty_search_pages_threshold : int
+  jitter_seconds : float
+  log_path : str
+  max_pages_per_query : int
+  max_queries : int
+  missing_signal_policy : str
+  sticky_caution_multiplier : float
+  summary_every_requests : int
+  window_end : time
+  window_start : time
+}
+class "HarvestScheduleResolver" as src.harvest_orchestration.HarvestScheduleResolver {
+  load(path: str | Path) -> HarvestSchedule
+  resolve(path: str | None) -> str
+}
+class "HarvestSearchPlan" as src.harvest_orchestration.HarvestSearchPlan {
+  key : str
+  location : str | None
+  query : str
+}
+class "IngestionResult" as src.core_domain_inputs.IngestionResult {
+  evaluations : list[JobEvaluation]
+  fetched : int
+  stored : int
+}
+class "JobCompassEvaluator" as src.core_domain_inputs.JobCompassEvaluator {
+  as_dict(evaluation: JobEvaluation) -> dict[str, object]
+  evaluate(job: JobRecord) -> JobEvaluation
+}
+class "JobEvaluation" as src.core_domain_inputs.JobEvaluation {
+  company : str
+  company_type : str
+  job_url : str
+  position : str
+  responsibility_level : str
+  salary : str
+  score : int
+  summary : str
+  techs : list[str]
+}
+class "JobFetchOutcome" as src.harvest_orchestration.JobFetchOutcome {
+  job : JobRecord | None
+  throttled : bool
+}
+class "JobIngestionService" as src.core_domain_inputs.JobIngestionService {
+  ingest() -> IngestionResult
+  list_jobs(limit: int) -> list[JobRecord]
+}
+class "JobRecord" as src.core_domain_inputs.JobRecord {
+  applied : bool
+  collected_at : datetime
+  company : str
+  dedupe_key : str
+  description : str
+  external_job_id : str | None
+  link : str
+  location_text : str | None
+  post_age_days : int | None
+  post_age_text : str | None
+  post_datetime : datetime | None
+  salary_text : str | None
+  seen : bool
+  source
+  stored_at : datetime | None
+  title : str
+  workplace_type : str | None
+  normalized() -> 'JobRecord'
+}
+class "JobSource" as src.core_domain_inputs.JobSource {
+  name
+}
+class "JobSourceAdapter" as src.core_domain_inputs.JobSourceAdapter {
+  {abstract}fetch_jobs() -> list[JobRecord]
+}
+class "LinkedInAcquisitionDiagnostics" as src.linkedin_acquisition.LinkedInAcquisitionDiagnostics {
+  dropped : int
+  drops : list[str]
+  extraction_mode_counts : dict[str, int]
+  job_detail_pages : int
+  parse_failures : int
+  requests : int
+  search_pages : int
+  as_dict() -> dict[str, object]
+  record_extraction_mode(mode: str) -> None
+}
+class "LinkedInExtractionService" as src.linkedin_extraction_filtering.LinkedInExtractionService {
+  extract_job_from_detail_html(html: str, collected_at: datetime, fallback_link: str | None) -> JobRecord | None
+  extract_job_ids_from_search_html(html: str) -> list[str]
+}
+class "LinkedInExtractionSpec" as src.linkedin_extraction_filtering.LinkedInExtractionSpec {
+  search_job_id_regex : str
+  version : int
+}
+class "LinkedInFallbackExtractor" as src.linkedin_extraction_filtering.LinkedInFallbackExtractor {
+  extract(html: str, collected_at: datetime, fallback_link: str) -> JobRecord | None
+}
+class "LinkedInFilterEvaluator" as src.linkedin_extraction_filtering.LinkedInFilterEvaluator {
+  derive_region(location_text: str) -> str | None
+  parse_post_age_days(value: str | None) -> int | None
+}
+class "LinkedInFilterPolicy" as src.linkedin_acquisition.LinkedInFilterPolicy {
+  allows(job: JobRecord) -> bool
+  derive_region(location_text: str) -> str | None
+}
+class "LinkedInFixtureNormalizer" as src.linkedin_acquisition.LinkedInFixtureNormalizer {
+  normalize(item: dict[str, Any], collected_at: datetime) -> JobRecord
+}
+class "LinkedInFixtureSerializer" as src.linkedin_acquisition.LinkedInFixtureSerializer {
+  item_from_job(job: JobRecord) -> dict[str, object]
+  write(path: str | Path, jobs: list[JobRecord]) -> None
+}
+class "LinkedInJsonFileAdapter" as src.linkedin_acquisition.LinkedInJsonFileAdapter {
+  fetch_jobs() -> list[JobRecord]
+}
+class "LinkedInNightlyHarvester" as src.harvest_orchestration.LinkedInNightlyHarvester {
+  run() -> HarvestResult
+}
+class "LinkedInQueryBuilder" as src.linkedin_acquisition.LinkedInQueryBuilder {
+  build_search_url(query: str, start: int) -> str
+  derive_queries() -> list[str]
+}
+class "LinkedInScrapeAdapter" as src.linkedin_acquisition.LinkedInScrapeAdapter {
+  diagnostics
+  fetch_jobs() -> list[JobRecord]
+}
+class "LinkedInTransport" as src.linkedin_acquisition.LinkedInTransport {
+  format_url_error() -> str
+  ssl_context()
+  write_capture(dir_path: Path, name: str, content: str) -> None
+}
+class "LlmJsonResult" as src.linkedin_extraction_filtering.LlmJsonResult {
+  data : dict[str, Any] | None
+  error : str | None
+  ok : bool
+}
+class "LocalLlmClient" as src.linkedin_extraction_filtering.LocalLlmClient {
+  extract_json(system_prompt: str, user_prompt: str) -> LlmJsonResult
+}
+class "LogTailer" as src.persistence_runtime_ops.LogTailer {
+  tail(paths: list[Path]) -> int
+}
+class "ProfessionalCompass" as src.core_domain_inputs.ProfessionalCompass {
+  context_about_me : list[str]
+  current_situation : list[str]
+  hard_filters : list[str]
+  min_monthly_usd : int
+  positioning : str
+  preferred_timezone_overlap : str
+  remote_only : bool
+  required_output_fields : list[str]
+  search_max_post_age_days : int | None
+  search_regions : list[str] | None
+  search_workplace_types : list[str] | None
+  summary_instruction : str
+  target_monthly_usd_range : list[int]
+  target_roles : list[str]
+}
+class "ProfessionalCompassLoader" as src.core_domain_inputs.ProfessionalCompassLoader {
+  load(path: str | Path) -> ProfessionalCompass
+}
+class "RepoPaths" as src.persistence_runtime_ops.RepoPaths {
+  cron_log_path : Path
+  data_dir : Path
+  db_path : Path
+  harvest_log_path : Path
+  remove_one_shot_script_path : Path
+  root_dir : Path
+  run_script_path : Path
+  runner_pid_path : Path
+  schedule_override_path : Path
+}
+class "RepositoryStateStore" as src.persistence_runtime_ops.RepositoryStateStore {
+  count_jobs() -> int
+  existing_external_job_ids(source: JobSource, external_job_ids: list[str]) -> set[str]
+  get_harvest_query_state(source: str, query: str) -> HarvestQueryState
+  get_harvest_run_state(source: str) -> HarvestRunState
+  initialize() -> None
+  list_jobs(limit: int) -> list[JobRecord]
+  save_harvest_query_state(state: HarvestQueryState) -> None
+  save_harvest_run_state(state: HarvestRunState) -> None
+  upsert_job(job: JobRecord) -> None
+}
+class "RuntimeEntrypoints" as src.runtime_entrypoints.RuntimeEntrypoints {
+  build_parser() -> argparse.ArgumentParser
+  main(argv: list[str] | None) -> int
+  run_harvest(args: argparse.Namespace) -> int
+  run_ingest(args: argparse.Namespace) -> int
+  run_runtime_command(args: argparse.Namespace) -> int
+}
+class "RuntimePathResolver" as src.persistence_runtime_ops.RuntimePathResolver {
+  paths : RepoPaths
+}
+class "RuntimeScriptDispatcher" as src.persistence_runtime_ops.RuntimeScriptDispatcher {
+  run(argv: list[str]) -> int
+}
+class "SQLiteJobRepository" as src.persistence_runtime_ops.SQLiteJobRepository {
+  count_jobs() -> int
+  existing_external_job_ids(source: JobSource, external_job_ids: list[str]) -> set[str]
+  get_harvest_query_state(source: str, query: str) -> HarvestQueryState
+  get_harvest_run_state(source: str) -> HarvestRunState
+  initialize() -> None
+  list_jobs(limit: int) -> list[JobRecord]
+  save_harvest_query_state(state: HarvestQueryState) -> None
+  save_harvest_run_state(state: HarvestRunState) -> None
+  upsert_job(job: JobRecord) -> None
+}
+class "SourceLinkNormalizer" as src.core_domain_inputs.SourceLinkNormalizer {
+  normalize(link: str) -> str
+}
+src.linkedin_acquisition.LinkedInJsonFileAdapter --|> src.core_domain_inputs.JobSourceAdapter
+src.linkedin_acquisition.LinkedInScrapeAdapter --|> src.core_domain_inputs.JobSourceAdapter
+src.core_domain_inputs.JobRecord --> src.core_domain_inputs.JobSource : source
+src.linkedin_acquisition.LinkedInAcquisitionDiagnostics --* src.linkedin_acquisition.LinkedInScrapeAdapter : diagnostics
+@enduml
