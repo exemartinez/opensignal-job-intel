@@ -21,6 +21,8 @@ REQUIRED_CANONICAL_FIELDS = {"company", "title", "description", "link"}
 
 @dataclass(slots=True)
 class LlmJsonResult:
+    """Represent the success or failure of one LLM JSON extraction call."""
+
     ok: bool
     data: dict[str, Any] | None
     error: str | None
@@ -35,11 +37,13 @@ class LocalLlmClient:
         model: str | None = None,
         timeout_seconds: float = 30.0,
     ) -> None:
+        """Bind the local LLM endpoint, model, and request timeout."""
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._timeout_seconds = timeout_seconds
 
     def extract_json(self, system_prompt: str, user_prompt: str) -> LlmJsonResult:
+        """Try chat and completion endpoints until one yields JSON text."""
         chat_url = f"{self._base_url}/v1/chat/completions"
         payload: dict[str, Any] = {
             "messages": [
@@ -65,6 +69,7 @@ class LocalLlmClient:
         return LlmJsonResult(ok=False, data=None, error=chat.error or completion.error)
 
     def _post_json(self, url: str, payload: dict[str, Any]) -> LlmJsonResult:
+        """POST JSON to the local LLM endpoint and decode the response."""
         body = json.dumps(payload).encode("utf-8")
         request = urllib.request.Request(
             url,
@@ -96,11 +101,13 @@ class LinkedInFallbackExtractor:
     """Perform LLM-based fallback extraction from LinkedIn detail HTML."""
 
     def __init__(self, client: LocalLlmClient | None) -> None:
+        """Bind the optional local LLM client used for fallback parsing."""
         self._client = client
 
     def extract(
         self, html: str, collected_at: datetime, fallback_link: str
     ) -> JobRecord | None:
+        """Recover a canonical job record from HTML through the local LLM."""
         if not self._client:
             return None
         system = (
@@ -137,6 +144,8 @@ class LinkedInFallbackExtractor:
 
 @dataclass(slots=True)
 class LinkedInExtractionSpec:
+    """Hold the deterministic extraction configuration for LinkedIn HTML."""
+
     version: int
     search_job_id_regex: str
 
@@ -145,9 +154,11 @@ class LinkedInExtractionService:
     """Provide deterministic extraction operations for LinkedIn HTML."""
 
     def __init__(self, spec: LinkedInExtractionSpec) -> None:
+        """Bind the deterministic extraction spec."""
         self._spec = spec
 
     def extract_job_ids_from_search_html(self, html: str) -> list[str]:
+        """Extract distinct LinkedIn job ids from one search page."""
         ids = re.findall(self._spec.search_job_id_regex, html)
         return sorted({str(value) for value in ids if str(value).isdigit()})
 
@@ -157,6 +168,7 @@ class LinkedInExtractionService:
         collected_at: datetime,
         fallback_link: str | None = None,
     ) -> JobRecord | None:
+        """Extract one canonical job record from a detail page HTML payload."""
         posting = _extract_jobposting_jsonld(html)
         if posting:
             title = _get_path(posting, "title")
@@ -227,10 +239,12 @@ class LinkedInFilterEvaluator:
 
     @staticmethod
     def parse_post_age_days(value: str | None) -> int | None:
+        """Parse a relative-age string into coarse day count."""
         return _parse_post_age_days(value)
 
     @staticmethod
     def derive_region(location_text: str) -> str | None:
+        """Map a free-form location string into the normalized region bucket."""
         value = location_text.strip().lower()
         if not value:
             return None
@@ -287,6 +301,7 @@ class LinkedInFilterEvaluator:
 
 
 def load_extraction_spec(path: str) -> LinkedInExtractionSpec:
+    """Load and validate the LinkedIn extraction spec JSON file."""
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     spec = LinkedInExtractionSpec(
         version=int(payload.get("version", 1)),
@@ -297,6 +312,7 @@ def load_extraction_spec(path: str) -> LinkedInExtractionSpec:
 
 
 def validate_extraction_spec(spec: LinkedInExtractionSpec) -> None:
+    """Reject extraction specs that the deterministic parser cannot use."""
     if spec.version != 1:
         raise ValueError(f"Unsupported extraction spec version: {spec.version}")
     if not spec.search_job_id_regex:
@@ -308,6 +324,7 @@ def validate_extraction_spec(spec: LinkedInExtractionSpec) -> None:
 
 
 def extract_job_ids_from_search_html(html: str, spec: LinkedInExtractionSpec) -> list[str]:
+    """Convenience wrapper for deterministic search-page id extraction."""
     return LinkedInExtractionService(spec).extract_job_ids_from_search_html(html)
 
 
@@ -316,6 +333,7 @@ def extract_job_from_detail_html(
     collected_at: datetime,
     fallback_link: str | None = None,
 ) -> JobRecord | None:
+    """Convenience wrapper for deterministic detail-page extraction."""
     spec = LinkedInExtractionSpec(version=1, search_job_id_regex=r"\d+")
     return LinkedInExtractionService(spec).extract_job_from_detail_html(
         html, collected_at=collected_at, fallback_link=fallback_link
@@ -323,6 +341,7 @@ def extract_job_from_detail_html(
 
 
 def _extract_openai_content(payload: dict[str, Any] | None) -> str:
+    """Pull the message content field from an OpenAI-style response body."""
     if not payload:
         return ""
     choices = payload.get("choices")
@@ -336,6 +355,7 @@ def _extract_openai_content(payload: dict[str, Any] | None) -> str:
 
 
 def _parse_json_from_text(text: str) -> LlmJsonResult:
+    """Parse the first JSON object found inside arbitrary model output."""
     start = text.find("{")
     end = text.rfind("}")
     if start == -1 or end == -1 or end <= start:
@@ -348,34 +368,41 @@ def _parse_json_from_text(text: str) -> LlmJsonResult:
 
 
 def _extract_text(html: str, pattern: str) -> str | None:
+    """Extract and normalize text captured by one regex pattern."""
     raw = _extract_raw(html, pattern)
     return _html_to_text(raw) if raw is not None else None
 
 
 def _extract_raw(html: str, pattern: str) -> str | None:
+    """Extract the raw first regex capture group from HTML."""
     match = re.search(pattern, html, flags=re.DOTALL | re.IGNORECASE)
     return match.group(1).strip() if match else None
 
 
 def _extract_attr(html: str, pattern: str) -> str | None:
+    """Extract one HTML attribute value through a regex capture group."""
     match = re.search(pattern, html, flags=re.IGNORECASE)
     return match.group(1).strip() if match else None
 
 
 def _extract_job_id_from_link(link: str) -> str | None:
+    """Extract the numeric LinkedIn job id from a canonical job URL."""
     match = re.search(r"/jobs/view/(?:[^/]*-)?(\d+)", link)
     return match.group(1) if match else None
 
 
 def _extract_location_text(html: str) -> str | None:
+    """Extract the displayed location text from a detail page."""
     return _extract_text(html, r"<span[^>]*topcard__flavor--bullet[^>]*>(.*?)</span>")
 
 
 def _extract_post_age_text(html: str) -> str | None:
+    """Extract the displayed relative posting age from a detail page."""
     return _extract_text(html, r"<span[^>]*posted-time-ago__text[^>]*>(.*?)</span>")
 
 
 def _extract_workplace_type(html: str) -> str | None:
+    """Infer workplace type from the detail page body."""
     lowered = html.lower()
     if "workplace type" in lowered:
         value = _extract_text(html, r"Workplace type\s*</h3>\s*<span[^>]*>(.*?)</span>")
@@ -391,6 +418,7 @@ def _extract_workplace_type(html: str) -> str | None:
 
 
 def _parse_post_age_days(value: str | None) -> int | None:
+    """Convert a human-readable post age into a coarse day count."""
     if not value:
         return None
     normalized = re.sub(r"\s+", " ", value.strip().lower())
@@ -415,6 +443,7 @@ def _parse_post_age_days(value: str | None) -> int | None:
 
 
 def _extract_jobposting_jsonld(html: str) -> dict[str, Any] | None:
+    """Return the first JobPosting JSON-LD object found in the page."""
     matches = re.findall(
         r"<script[^>]*type=\"application/ld\+json\"[^>]*>(.*?)</script>",
         html,
@@ -438,6 +467,7 @@ def _extract_jobposting_jsonld(html: str) -> dict[str, Any] | None:
 
 
 def _is_jobposting(obj: dict[str, Any]) -> bool:
+    """Return whether a JSON-LD object declares the JobPosting type."""
     value = obj.get("@type")
     if value == "JobPosting":
         return True
@@ -447,6 +477,7 @@ def _is_jobposting(obj: dict[str, Any]) -> bool:
 
 
 def _get_path(obj: dict[str, Any], path: str) -> Any:
+    """Traverse a dotted dict path and return the nested value when present."""
     cur: Any = obj
     for part in path.split("."):
         if not isinstance(cur, dict):
@@ -456,6 +487,7 @@ def _get_path(obj: dict[str, Any], path: str) -> Any:
 
 
 def _parse_optional_datetime(value: str | None) -> datetime | None:
+    """Parse an ISO-like datetime or date value when present."""
     if not value:
         return None
     try:
@@ -468,6 +500,7 @@ def _parse_optional_datetime(value: str | None) -> datetime | None:
 
 
 def _html_to_text(value: str) -> str:
+    """Collapse HTML markup into compact plain text."""
     value = re.sub(r"<br\s*/?>", "\n", value, flags=re.IGNORECASE)
     value = re.sub(r"</p>", "\n", value, flags=re.IGNORECASE)
     value = re.sub(r"<[^>]+>", " ", value)
@@ -475,6 +508,7 @@ def _html_to_text(value: str) -> str:
 
 
 def _extract_salary_text(posting: dict[str, Any]) -> str | None:
+    """Extract the coarse salary string from JobPosting JSON-LD."""
     salary = posting.get("baseSalary")
     if not isinstance(salary, dict):
         return None

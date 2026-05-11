@@ -32,6 +32,7 @@ class RuntimeEntrypoints:
 
     @staticmethod
     def build_parser() -> argparse.ArgumentParser:
+        """Build the top-level CLI parser and subcommands."""
         parser = argparse.ArgumentParser(
             prog="opensignal-job-intel",
             description="CLI for local-first job ingestion, harvest, and runtime operations.",
@@ -83,6 +84,7 @@ class RuntimeEntrypoints:
 
     @staticmethod
     def main(argv: list[str] | None = None) -> int:
+        """Parse CLI arguments and dispatch the selected command."""
         args = build_parser().parse_args(argv)
         if args.command == "ingest-linkedin":
             return _run_ingest(args)
@@ -92,6 +94,7 @@ class RuntimeEntrypoints:
 
     @staticmethod
     def run_ingest(args: argparse.Namespace) -> int:
+        """Run fixture or live LinkedIn ingestion and print the summary."""
         repository = SQLiteJobRepository(Path(args.db_path))
         repository.initialize()
         compass = load_professional_compass(args.compass_file)
@@ -143,6 +146,7 @@ class RuntimeEntrypoints:
 
     @staticmethod
     def run_harvest(args: argparse.Namespace) -> int:
+        """Run one harvest pass and print the harvest summary."""
         repository = SQLiteJobRepository(Path(args.db_path))
         repository.initialize()
         compass = load_professional_compass(args.compass_file)
@@ -172,6 +176,7 @@ class RuntimeEntrypoints:
 
     @staticmethod
     def run_runtime_command(args: argparse.Namespace) -> int:
+        """Delegate operational helper commands to the runtime dispatcher."""
         dispatcher = HarvestCronScripts(Path(__file__))
         argv = [str(Path(__file__)), args.command]
         if args.command == "show-recent-jobs":
@@ -180,18 +185,22 @@ class RuntimeEntrypoints:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Expose parser creation for tests and script execution."""
     return RuntimeEntrypoints.build_parser()
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Expose the CLI main function at module scope."""
     return RuntimeEntrypoints.main(argv)
 
 
 def _run_ingest(args: argparse.Namespace) -> int:
+    """Expose ingest execution at module scope for patch-friendly tests."""
     return RuntimeEntrypoints.run_ingest(args)
 
 
 def _run_harvest(args: argparse.Namespace) -> int:
+    """Expose harvest execution at module scope for patch-friendly tests."""
     return RuntimeEntrypoints.run_harvest(args)
 
 

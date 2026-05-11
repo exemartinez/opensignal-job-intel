@@ -48,6 +48,8 @@ HARVEST_SOURCE = JobSource.LINKEDIN.value
 
 @dataclass(slots=True)
 class FetchResponse:
+    """Capture the result of one harvest HTTP request."""
+
     url: str
     kind: str
     text: str | None
@@ -57,6 +59,8 @@ class FetchResponse:
 
 @dataclass(slots=True)
 class HarvestResult:
+    """Aggregate counters for one harvest execution."""
+
     queries_processed: int = 0
     search_pages: int = 0
     detail_pages: int = 0
@@ -69,6 +73,7 @@ class HarvestResult:
     throttles: int = 0
 
     def as_dict(self) -> dict[str, int]:
+        """Return a JSON-ready summary of the harvest counters."""
         return {
             "queries_processed": self.queries_processed,
             "search_pages": self.search_pages,
@@ -85,32 +90,43 @@ class HarvestResult:
 
 @dataclass(slots=True)
 class JobFetchOutcome:
+    """Return the fetched job plus throttle state for one detail request."""
+
     job: JobRecord | None
     throttled: bool = False
 
 
 @dataclass(slots=True)
 class HarvestSearchPlan:
+    """Describe one search query and optional location scope."""
+
     query: str
     location: str | None = None
 
     @property
     def key(self) -> str:
+        """Return the stable persistence key for the plan."""
         return f"{self.query}::{self.location or ''}"
 
 
 @dataclass(slots=True)
 class FilterDecision:
+    """Represent whether a harvested job passed the filter policy."""
+
     allowed: bool
     reason: str | None = None
 
 
 class HarvestLogger:
+    """Write harvest logs both to stdout and to the configured file."""
+
     def __init__(self, file_path: str | Path) -> None:
+        """Bind and prepare the harvest log file path."""
         self._file_path = Path(file_path)
         self._file_path.parent.mkdir(parents=True, exist_ok=True)
 
     def log(self, message: str) -> None:
+        """Emit one timestamped harvest log line."""
         line = f"{datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')} {message}"
         print(line)
         with self._file_path.open("a", encoding="utf-8") as handle:
@@ -132,6 +148,7 @@ class LinkedInNightlyHarvester:
         fetcher: Callable[[str, str], FetchResponse] | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
+        """Bind all collaborators and runtime settings for the harvest loop."""
         self._compass = compass
         self._repository = repository
         self._spec = load_extraction_spec(extraction_spec_path)
@@ -149,6 +166,7 @@ class LinkedInNightlyHarvester:
         self._result = HarvestResult()
 
     def run(self) -> HarvestResult:
+        """Execute the harvest loop inside the configured time window."""
         queries = _derive_search_plans(self._compass, limit=self._schedule.max_queries)
         self._logger.log(
             f"harvest start query_count={len(queries)} window={self._schedule.window_start.strftime('%H:%M')}-{self._schedule.window_end.strftime('%H:%M')}"
@@ -168,6 +186,7 @@ class LinkedInNightlyHarvester:
         return self._result
 
     def _run_query(self, plan: HarvestSearchPlan) -> None:
+        """Run one query plan across search pages and detail fetches."""
         state = self._repository.get_harvest_query_state(HARVEST_SOURCE, plan.key)
         self._logger.log(
             f"query start query={json.dumps(plan.query)} location={json.dumps(plan.location)} next_start={state.next_start} empty_pages={state.consecutive_empty_pages} yielded_new_ids={state.yielded_new_ids}"
@@ -258,6 +277,7 @@ class LinkedInNightlyHarvester:
             self._maybe_log_summary()
 
     def _fetch_and_extract_job(self, job_id: str, collected_at: datetime) -> JobFetchOutcome:
+        """Fetch one detail page and turn it into a canonical job record."""
         link = f"https://www.linkedin.com/jobs/view/{job_id}/"
         detail = self._request(link, kind="job")
         if detail.status_code == 403:
@@ -278,6 +298,7 @@ class LinkedInNightlyHarvester:
         return JobFetchOutcome(job=job)
 
     def _request(self, url: str, kind: str) -> FetchResponse:
+        """Apply pacing, execute one request, and log the outcome."""
         self._apply_pacing_delay()
         response = self._fetcher(url, kind)
         self._result.requests += 1
@@ -290,6 +311,7 @@ class LinkedInNightlyHarvester:
         return response
 
     def _fetch_text(self, url: str, kind: str) -> FetchResponse:
+        """Fetch one search or detail page using the guest HTTP flow."""
         headers = {
             "User-Agent": "Mozilla/5.0 (compatible; opensignal-job-intel/1.0)",
             "Accept-Language": "en-US,en;q=0.9",
@@ -315,6 +337,7 @@ class LinkedInNightlyHarvester:
             return FetchResponse(url=url, kind=kind, text=None, error=f"url_error:{exc}")
 
     def _apply_pacing_delay(self) -> None:
+        """Sleep according to base delay, jitter, and sticky caution state."""
         delay = self._schedule.base_delay_seconds + random.uniform(0, self._schedule.jitter_seconds)
         if self._run_state.sticky_caution_enabled:
             delay *= self._schedule.sticky_caution_multiplier
@@ -322,6 +345,7 @@ class LinkedInNightlyHarvester:
             self._sleep(delay)
 
     def _handle_throttle(self) -> None:
+        """Escalate backoff state after a 403 throttle response."""
         self._run_state.throttle_events += 1
         self._run_state.sticky_caution_enabled = True
         self._run_state.last_throttle_at = utc_now()
@@ -346,6 +370,7 @@ class LinkedInNightlyHarvester:
         collected_at: datetime,
         fallback_link: str,
     ) -> JobRecord | None:
+        """Try the local LLM fallback when deterministic extraction fails."""
         if not self._llm:
             return None
         system = (
@@ -380,6 +405,7 @@ class LinkedInNightlyHarvester:
         )
 
     def _search_page_has_stale_results(self, html: str) -> bool:
+        """Detect whether a search page shows results older than the age limit."""
         max_age_days = self._compass.search_max_post_age_days
         if max_age_days is None:
             return False
@@ -390,12 +416,14 @@ class LinkedInNightlyHarvester:
         return False
 
     def _maybe_log_summary(self) -> None:
+        """Emit a periodic progress summary when configured to do so."""
         every = self._schedule.summary_every_requests
         if every <= 0 or self._result.requests == 0 or self._result.requests % every != 0:
             return
         self._logger.log("summary " + json.dumps(self._result.as_dict(), ensure_ascii=True))
 
     def _within_window(self) -> bool:
+        """Return whether the current local time is inside the harvest window."""
         return _time_within_window(
             datetime.now().astimezone().time(),
             self._schedule.window_start,
@@ -403,6 +431,7 @@ class LinkedInNightlyHarvester:
         )
 
     def _within_window_after(self, delay_seconds: float) -> bool:
+        """Return whether the harvest window will still be open after a delay."""
         future = datetime.fromtimestamp(
             datetime.now().astimezone().timestamp() + delay_seconds
         ).astimezone()
@@ -411,6 +440,7 @@ class LinkedInNightlyHarvester:
         )
 
     def _hit_max_jobs(self) -> bool:
+        """Return whether the optional stored-job cap has been reached."""
         return self._max_jobs is not None and self._result.stored >= self._max_jobs
 
 
@@ -419,10 +449,12 @@ class HarvestScheduleResolver:
 
     @staticmethod
     def resolve(path: str | None) -> str:
+        """Resolve the effective harvest schedule path."""
         return resolve_harvest_schedule_path(path)
 
     @staticmethod
     def load(path: str | Path) -> HarvestSchedule:
+        """Load the configured harvest schedule from disk."""
         return load_harvest_schedule(path)
 
 
@@ -431,14 +463,17 @@ class HarvestPlanBuilder:
 
     @staticmethod
     def derive_search_plans(compass: ProfessionalCompass, max_queries: int) -> list[HarvestSearchPlan]:
+        """Build the harvest search-plan list from the compass."""
         return _derive_search_plans(compass, max_queries)
 
     @staticmethod
     def derive_location_labels(regions: list[str] | None) -> list[str]:
+        """Map region codes into the human-readable location labels used in search."""
         return _derive_location_labels(regions)
 
     @staticmethod
     def build_search_url(*, query: str, start: int, location: str | None, compass: ProfessionalCompass) -> str:
+        """Serialize one harvest search URL from the plan inputs."""
         return _build_harvest_search_url(
             HarvestSearchPlan(query=query, location=location),
             start,
@@ -451,6 +486,7 @@ class HarvestFilterPolicy:
 
     @staticmethod
     def evaluate(job: JobRecord, compass: ProfessionalCompass, missing_signal_policy: str) -> FilterDecision:
+        """Evaluate one harvested job against the configured filter policy."""
         return _evaluate_harvest_filters(
             job=job,
             max_post_age_days=compass.search_max_post_age_days,
@@ -461,6 +497,7 @@ class HarvestFilterPolicy:
 
 
 def load_harvest_schedule(path: str | Path) -> HarvestSchedule:
+    """Load the YAML harvest schedule into the canonical dataclass."""
     payload = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
     window = payload.get("window") or {}
     search = payload.get("search") or {}
@@ -487,6 +524,7 @@ def load_harvest_schedule(path: str | Path) -> HarvestSchedule:
 
 
 def resolve_harvest_schedule_path(path: str | None) -> str:
+    """Resolve the explicit, local, or default harvest schedule path."""
     if path:
         return path
     local = Path(LOCAL_SCHEDULE_OVERRIDE_PATH)
@@ -503,6 +541,7 @@ def _evaluate_harvest_filters(
     allowed_regions: list[str] | None,
     missing_signal_policy: str,
 ) -> FilterDecision:
+    """Apply best-effort harvest filters and explain any rejection."""
     if max_post_age_days is not None:
         if job.post_age_days is None:
             if missing_signal_policy == "drop":
@@ -532,6 +571,7 @@ def _evaluate_harvest_filters(
 
 
 def _derive_search_plans(compass: ProfessionalCompass, limit: int) -> list[HarvestSearchPlan]:
+    """Expand target roles and locations into bounded harvest search plans."""
     roles = [role.strip() for role in compass.target_roles if role.strip()]
     deduped_roles = list(dict.fromkeys(roles))
     locations = _derive_location_labels(compass.search_regions)
@@ -551,6 +591,7 @@ def _derive_search_plans(compass: ProfessionalCompass, limit: int) -> list[Harve
 
 
 def _derive_location_labels(regions: list[str] | None) -> list[str]:
+    """Map normalized region values into LinkedIn location labels."""
     normalized = _normalize_region_values(regions)
     if not normalized:
         return []
@@ -572,6 +613,7 @@ def _derive_location_labels(regions: list[str] | None) -> list[str]:
 
 
 def _normalize_region_values(regions: list[str] | None) -> list[str] | None:
+    """Normalize user-facing region aliases for harvest filtering and search."""
     normalized = _normalize_str_list(regions)
     if normalized is None:
         return None
@@ -584,6 +626,7 @@ def _build_harvest_search_url(
     start: int,
     compass: ProfessionalCompass,
 ) -> str:
+    """Build one LinkedIn harvest search URL from the plan and compass."""
     params = {
         "keywords": plan.query,
         "start": str(start),
@@ -596,6 +639,7 @@ def _build_harvest_search_url(
 
 
 def _extract_relative_age_texts(html: str) -> list[str]:
+    """Extract all relative-age snippets from a search page."""
     matches = re.findall(
         r"(just now|today|\d+\s+(?:minute|hour|day|week|month|year)s?\s+ago)",
         html,
@@ -605,6 +649,7 @@ def _extract_relative_age_texts(html: str) -> list[str]:
 
 
 def _parse_post_age_days(value: str | None) -> int | None:
+    """Convert a relative-age string into an approximate day count."""
     if not value:
         return None
     normalized = re.sub(r"\s+", " ", value.strip().lower())
@@ -629,6 +674,7 @@ def _parse_post_age_days(value: str | None) -> int | None:
 
 
 def _parse_clock(value: str) -> time_of_day:
+    """Parse an `HH:MM` clock string into a time object."""
     try:
         hour, minute = [int(part) for part in str(value).split(":", 1)]
     except Exception as exc:  # pragma: no cover
@@ -637,12 +683,14 @@ def _parse_clock(value: str) -> time_of_day:
 
 
 def _time_within_window(now: time_of_day, start: time_of_day, end: time_of_day) -> bool:
+    """Return whether a time falls inside a possibly overnight window."""
     if start <= end:
         return start <= now < end
     return now >= start or now < end
 
 
 def _write_capture(dir_path: Path, name: str, content: str) -> None:
+    """Persist one raw HTML capture for harvest debugging."""
     dir_path.mkdir(parents=True, exist_ok=True)
     (dir_path / name).write_text(content, encoding="utf-8")
 

@@ -36,6 +36,8 @@ from src.linkedin_extraction_filtering import (
 
 @dataclass(slots=True)
 class LinkedInAcquisitionDiagnostics:
+    """Track request, parse, and filter counts for one acquisition run."""
+
     requests: int = 0
     search_pages: int = 0
     job_detail_pages: int = 0
@@ -45,9 +47,11 @@ class LinkedInAcquisitionDiagnostics:
     extraction_mode_counts: dict[str, int] = field(default_factory=dict)
 
     def record_extraction_mode(self, mode: str) -> None:
+        """Increment the counter for the extraction path that succeeded."""
         self.extraction_mode_counts[mode] = self.extraction_mode_counts.get(mode, 0) + 1
 
     def as_dict(self) -> dict[str, object]:
+        """Return a JSON-ready representation of the diagnostics."""
         return {
             "requests": self.requests,
             "search_pages": self.search_pages,
@@ -75,6 +79,7 @@ class LinkedInScrapeAdapter(JobSourceAdapter):
         llm_base_url: str | None = None,
         llm_model: str | None = None,
     ) -> None:
+        """Bind compass, extraction, pacing, and optional fallback settings."""
         self._compass = compass
         self._spec: LinkedInExtractionSpec = load_extraction_spec(extraction_spec_path)
         self._max_queries = max_queries
@@ -93,6 +98,7 @@ class LinkedInScrapeAdapter(JobSourceAdapter):
         self.diagnostics = LinkedInAcquisitionDiagnostics()
 
     def fetch_jobs(self) -> list[JobRecord]:
+        """Fetch, extract, filter, and optionally serialize live LinkedIn jobs."""
         collected_at = utc_now()
         max_age_days = self._compass.search_max_post_age_days
         allowed_workplace = _normalize_str_list(self._compass.search_workplace_types)
@@ -165,6 +171,7 @@ class LinkedInScrapeAdapter(JobSourceAdapter):
         return jobs
 
     def _fetch_text(self, url: str, kind: str) -> str | None:
+        """Fetch one guest-page HTML document and record request diagnostics."""
         headers = {
             "User-Agent": "Mozilla/5.0 (compatible; opensignal-job-intel/1.0)",
             "Accept-Language": "en-US,en;q=0.9",
@@ -207,6 +214,7 @@ class LinkedInScrapeAdapter(JobSourceAdapter):
         collected_at: datetime,
         fallback_link: str,
     ) -> JobRecord | None:
+        """Ask the local LLM to recover a canonical job when parsing fails."""
         if not self._llm:
             return None
         system = (
@@ -247,14 +255,17 @@ class LinkedInQueryBuilder:
     """Derive and serialize live LinkedIn search queries from the compass."""
 
     def __init__(self, compass: ProfessionalCompass, limit: int) -> None:
+        """Bind the compass and the maximum query count."""
         self._compass = compass
         self._limit = limit
 
     def derive_queries(self) -> list[str]:
+        """Build the live LinkedIn search queries from the compass."""
         return _derive_queries(self._compass, self._limit)
 
     @staticmethod
     def build_search_url(query: str, start: int) -> str:
+        """Serialize one live LinkedIn search URL."""
         return _build_search_url(query=query, start=start)
 
 
@@ -268,11 +279,13 @@ class LinkedInFilterPolicy:
         allowed_workplace_types: list[str] | None,
         allowed_regions: list[str] | None,
     ) -> None:
+        """Bind the optional best-effort filter constraints."""
         self._max_post_age_days = max_post_age_days
         self._allowed_workplace_types = _normalize_str_list(allowed_workplace_types)
         self._allowed_regions = _normalize_str_list(allowed_regions)
 
     def allows(self, job: JobRecord) -> bool:
+        """Return whether a canonical job passes the configured filters."""
         return _passes_filters(
             job,
             max_post_age_days=self._max_post_age_days,
@@ -282,6 +295,7 @@ class LinkedInFilterPolicy:
 
     @staticmethod
     def derive_region(location_text: str) -> str | None:
+        """Map a location string into the normalized region bucket."""
         return _derive_region(location_text)
 
 
@@ -290,10 +304,12 @@ class LinkedInFixtureSerializer:
 
     @staticmethod
     def item_from_job(job: JobRecord) -> dict[str, object]:
+        """Convert one canonical job into the fixture export row shape."""
         return _job_to_fixture_item(job)
 
     @staticmethod
     def write(path: str | Path, jobs: list[JobRecord]) -> None:
+        """Write canonical fixture rows to disk."""
         destination = Path(path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         payload = [LinkedInFixtureSerializer.item_from_job(job) for job in jobs]
@@ -308,14 +324,17 @@ class LinkedInTransport:
 
     @staticmethod
     def ssl_context():
+        """Return the SSL context used for live LinkedIn requests."""
         return _ssl_context()
 
     @staticmethod
     def format_url_error(*, kind: str, url: str, error) -> str:
+        """Format a network failure for acquisition diagnostics."""
         return _format_url_error(kind=kind, url=url, error=error)
 
     @staticmethod
     def write_capture(dir_path: Path, name: str, content: str) -> None:
+        """Persist a raw HTML capture for debugging."""
         _write_capture(dir_path, name, content)
 
 
@@ -323,9 +342,11 @@ class LinkedInJsonFileAdapter(JobSourceAdapter):
     """Fixture-backed LinkedIn acquisition under the refactored surface."""
 
     def __init__(self, input_path: str | Path) -> None:
+        """Bind the JSON fixture path used for offline ingestion."""
         self._input_path = Path(input_path)
 
     def fetch_jobs(self) -> list[JobRecord]:
+        """Load and normalize all fixture rows into canonical job records."""
         payload = json.loads(self._input_path.read_text(encoding="utf-8"))
         items = payload["jobs"] if isinstance(payload, dict) else payload
         collected_at = utc_now()
@@ -336,6 +357,7 @@ class LinkedInJsonFileAdapter(JobSourceAdapter):
         item: dict[str, Any],
         collected_at: datetime,
     ) -> JobRecord:
+        """Convert one fixture row into the canonical job record shape."""
         return JobRecord(
             source=JobSource.LINKEDIN,
             external_job_id=item.get("id") or item.get("job_id") or item.get("external_job_id"),
@@ -363,11 +385,13 @@ class LinkedInFixtureNormalizer:
 
     @staticmethod
     def normalize(item: dict[str, Any], collected_at: datetime) -> JobRecord:
+        """Normalize one raw fixture row without keeping adapter state."""
         adapter = LinkedInJsonFileAdapter("__unused__")
         return adapter._normalize_item(item, collected_at)
 
 
 def parse_optional_datetime(value: str | None) -> datetime | None:
+    """Parse an ISO-like datetime string when present."""
     if not value:
         return None
     normalized = value.replace("Z", "+00:00")
@@ -375,6 +399,7 @@ def parse_optional_datetime(value: str | None) -> datetime | None:
 
 
 def _derive_queries(compass: ProfessionalCompass, limit: int) -> list[str]:
+    """Derive distinct search queries from the compass target roles."""
     base = [role for role in compass.target_roles if role.strip()]
     queries = []
     for role in base:
@@ -386,6 +411,7 @@ def _derive_queries(compass: ProfessionalCompass, limit: int) -> list[str]:
 
 
 def _normalize_str_list(value: list[str] | None) -> list[str] | None:
+    """Normalize a list of string filters for case-insensitive matching."""
     if value is None:
         return None
     normalized = [str(item).strip().lower() for item in value if str(item).strip()]
@@ -399,6 +425,7 @@ def _passes_filters(
     allowed_workplace_types: list[str] | None,
     allowed_regions: list[str] | None,
 ) -> bool:
+    """Apply best-effort age, workplace, and region filters to a job."""
     if max_post_age_days is not None and job.post_age_days is not None:
         if job.post_age_days > max_post_age_days:
             return False
@@ -416,10 +443,12 @@ def _passes_filters(
 
 
 def _derive_region(location_text: str) -> str | None:
+    """Delegate region derivation to the shared LinkedIn filter evaluator."""
     return LinkedInFilterEvaluator.derive_region(location_text)
 
 
 def _build_search_url(query: str, start: int) -> str:
+    """Build the guest LinkedIn search URL for one query page."""
     params = {
         "keywords": query,
         "start": str(start),
@@ -428,11 +457,13 @@ def _build_search_url(query: str, start: int) -> str:
 
 
 def _write_capture(dir_path: Path, name: str, content: str) -> None:
+    """Write one raw HTML capture into the requested directory."""
     dir_path.mkdir(parents=True, exist_ok=True)
     (dir_path / name).write_text(content, encoding="utf-8")
 
 
 def _job_to_fixture_item(job: JobRecord) -> dict[str, object]:
+    """Convert a canonical job into the persisted fixture export shape."""
     normalized = job.normalized()
     return {
         "id": None,
@@ -457,12 +488,14 @@ def _job_to_fixture_item(job: JobRecord) -> dict[str, object]:
 
 
 def _format_url_error(*, kind: str, url: str, error: urllib.error.URLError) -> str:
+    """Format a URLError with request context for diagnostics."""
     reason = error.reason
     reason_type = type(reason).__name__ if reason is not None else "None"
     return f"url_error:{kind}:{url}:{reason_type}:{error}"
 
 
 def _ssl_context() -> ssl.SSLContext:
+    """Build the SSL context used by live LinkedIn requests."""
     if os.environ.get("LINKEDIN_INSECURE_SSL") == "1":
         context = ssl.create_default_context()
         context.check_hostname = False

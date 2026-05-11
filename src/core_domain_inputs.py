@@ -16,6 +16,8 @@ from urllib.parse import urlsplit, urlunsplit
 
 
 class JobSource(StrEnum):
+    """Enumerate the supported upstream job sources."""
+
     LINKEDIN = "linkedin"
 
 
@@ -24,6 +26,7 @@ class Clock:
 
     @staticmethod
     def utc_now() -> datetime:
+        """Return the current UTC timestamp."""
         return datetime.now(timezone.utc)
 
 
@@ -32,20 +35,25 @@ class SourceLinkNormalizer:
 
     @staticmethod
     def normalize(link: str) -> str:
+        """Strip unstable link parts so deduplication stays stable."""
         parts = urlsplit(link.strip())
         return urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/"), "", ""))
 
 
 def utc_now() -> datetime:
+    """Expose the domain clock as a module-level helper."""
     return Clock.utc_now()
 
 
 def normalize_source_link(link: str) -> str:
+    """Expose source-link normalization as a module-level helper."""
     return SourceLinkNormalizer.normalize(link)
 
 
 @dataclass(slots=True)
 class JobRecord:
+    """Represent a canonical job row before or after persistence."""
+
     source: JobSource
     company: str
     title: str
@@ -64,6 +72,7 @@ class JobRecord:
     applied: bool = False
 
     def normalized(self) -> "JobRecord":
+        """Return a trimmed copy suitable for storage and comparison."""
         return replace(
             self,
             company=self.company.strip(),
@@ -78,6 +87,7 @@ class JobRecord:
 
     @property
     def dedupe_key(self) -> str:
+        """Build the stable key used for duplicate-safe persistence."""
         if self.external_job_id:
             return f"{self.source}:{self.external_job_id.strip()}"
         return f"{self.source}:{normalize_source_link(self.link)}"
@@ -85,6 +95,8 @@ class JobRecord:
 
 @dataclass(slots=True)
 class ProfessionalCompass:
+    """Capture the user intent and search constraints for evaluation."""
+
     summary_instruction: str
     required_output_fields: list[str]
     context_about_me: list[str]
@@ -103,6 +115,8 @@ class ProfessionalCompass:
 
 @dataclass(slots=True)
 class JobEvaluation:
+    """Hold the scored, human-readable evaluation for a job record."""
+
     company: str
     position: str
     job_url: str
@@ -116,6 +130,8 @@ class JobEvaluation:
 
 @dataclass(slots=True)
 class HarvestSchedule:
+    """Describe timing and pacing rules for the harvest workflow."""
+
     window_start: time
     window_end: time
     max_queries: int
@@ -134,6 +150,8 @@ class HarvestSchedule:
 
 @dataclass(slots=True)
 class HarvestRunState:
+    """Persist global harvest throttle and caution state."""
+
     source: str
     throttle_events: int = 0
     current_backoff_seconds: float = 0.0
@@ -144,6 +162,8 @@ class HarvestRunState:
 
 @dataclass(slots=True)
 class HarvestQueryState:
+    """Persist per-query resume state for harvest searches."""
+
     source: str
     query: str
     next_start: int = 0
@@ -158,6 +178,7 @@ class ProfessionalCompassLoader:
 
     @staticmethod
     def load(path: str | Path) -> ProfessionalCompass:
+        """Read a compass JSON document into the canonical dataclass."""
         payload = json.loads(Path(path).read_text(encoding="utf-8"))
         search = payload.get("search") or {}
         return ProfessionalCompass(
@@ -181,6 +202,7 @@ class ProfessionalCompassLoader:
 
 
 def load_professional_compass(path: str | Path) -> ProfessionalCompass:
+    """Load a professional compass from disk."""
     return ProfessionalCompassLoader.load(path)
 
 
@@ -208,9 +230,11 @@ class JobCompassEvaluator:
     """Evaluate job records against the professional compass."""
 
     def __init__(self, compass: ProfessionalCompass) -> None:
+        """Bind the evaluator to a single professional compass."""
         self._compass = compass
 
     def evaluate(self, job: JobRecord) -> JobEvaluation:
+        """Score one job record and build the user-facing evaluation."""
         techs = self._extract_techs(job)
         responsibility_level = self._classify_responsibility(job)
         company_type = self._classify_company_type(job)
@@ -230,9 +254,11 @@ class JobCompassEvaluator:
         )
 
     def as_dict(self, evaluation: JobEvaluation) -> dict[str, object]:
+        """Convert an evaluation into a JSON-ready dictionary."""
         return asdict(evaluation)
 
     def _extract_techs(self, job: JobRecord) -> list[str]:
+        """Extract the normalized technology tags mentioned in a job."""
         haystack = f"{job.title} {job.description}".lower()
         found = [
             keyword.upper() if keyword == "llm" else keyword.title()
@@ -242,6 +268,7 @@ class JobCompassEvaluator:
         return sorted(dict.fromkeys(found))
 
     def _classify_responsibility(self, job: JobRecord) -> str:
+        """Infer the responsibility level from title and description text."""
         haystack = f"{job.title} {job.description}".lower()
         if any(term in haystack for term in ("manager", "head of", "director", "people management")):
             return "manager"
@@ -263,6 +290,7 @@ class JobCompassEvaluator:
         return "unknown"
 
     def _classify_company_type(self, job: JobRecord) -> str:
+        """Infer the employer context from the job description text."""
         haystack = job.description.lower()
         if any(term in haystack for term in ("consulting", "consultancy", "client delivery", "advisory")):
             return "consulting"
@@ -275,6 +303,7 @@ class JobCompassEvaluator:
         return "unknown"
 
     def _normalize_salary(self, salary_text: str | None) -> str:
+        """Normalize salary text into a coarse monthly USD representation."""
         if not salary_text:
             return "Unknown"
         match = re.search(
@@ -304,6 +333,7 @@ class JobCompassEvaluator:
         company_type: str,
         salary: str,
     ) -> int:
+        """Compute the bounded compass-fit score for a job."""
         haystack = f"{job.title} {job.description}".lower()
         score = 5
         if any(role.lower() in haystack for role in self._compass.target_roles):
@@ -333,6 +363,7 @@ class JobCompassEvaluator:
         company_type: str,
         techs: list[str],
     ) -> str:
+        """Generate the short natural-language summary for a job."""
         tech_summary = ", ".join(techs[:4]) if techs else "general data stack"
         sentence = (
             f"{job.title} at {job.company}: {responsibility_level} role in a "
@@ -346,11 +377,14 @@ class JobSourceAdapter(ABC):
 
     @abstractmethod
     def fetch_jobs(self) -> list[JobRecord]:
+        """Return canonical job records from the backing source."""
         raise NotImplementedError
 
 
 @dataclass(slots=True)
 class IngestionResult:
+    """Summarize one ingestion run, including persistence breakdown."""
+
     fetched: int
     stored: int
     inserted: int
@@ -367,11 +401,13 @@ class JobIngestionService:
         repository: object,
         evaluator: JobCompassEvaluator,
     ) -> None:
+        """Bind the source adapter, repository, and evaluator collaborators."""
         self._adapter = adapter
         self._repository = repository
         self._evaluator = evaluator
 
     def ingest(self) -> IngestionResult:
+        """Fetch, persist, and evaluate one batch of jobs."""
         jobs = [job.normalized() for job in self._adapter.fetch_jobs()]
         stored = 0
         inserted = 0
@@ -394,6 +430,7 @@ class JobIngestionService:
         )
 
     def list_jobs(self, limit: int = 20) -> list[JobRecord]:
+        """Return the most recent persisted jobs for display."""
         return self._repository.list_jobs(limit=limit)
 
 

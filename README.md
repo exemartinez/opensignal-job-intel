@@ -28,7 +28,11 @@ It can:
 
 ## OpenSpec Shell Usage
 
-Run OpenSpec with `openspec ...`.
+Run OpenSpec with:
+
+```bash
+env PATH=/usr/local/opt/node@20/bin:$PATH openspec validate
+```
 
 ## Environment Setup
 
@@ -149,7 +153,9 @@ Fixture mode (offline):
 ```bash
 python3.11 main.py ingest-linkedin \
   --compass-file profiles/professional_compass.json \
-  --source-file /path/to/linkedin_jobs.json
+  --source-file sample_linkedin_jobs.json \
+  --db-path data/jobs.db \
+  --limit 10
 ```
 
 Live mode (scraping):
@@ -157,7 +163,11 @@ Live mode (scraping):
 ```bash
 python3.11 main.py ingest-linkedin \
   --compass-file profiles/professional_compass.json \
-  --max-jobs 25
+  --db-path data/jobs.db \
+  --limit 10 \
+  --max-jobs 25 \
+  --write-fixture data/live_linkedin_fixture.json \
+  --capture-dir data/linkedin_captures
 ```
 
 Optional flags:
@@ -170,6 +180,12 @@ Optional flags:
 Ingestion output reports both the total persisted jobs and the persistence
 breakdown, so a run that refreshes existing deduplicated rows will show
 `new: X, updated: Y` instead of implying every persisted job created a new row.
+
+To inspect the resulting rows directly:
+
+```bash
+python3.11 src/runtime_entrypoints.py show-recent-jobs 25
+```
 
 Nightly harvest mode:
 
@@ -193,10 +209,19 @@ Operational runtime commands:
 python3.11 src/runtime_entrypoints.py install-continuous-hourly-harvest-cron
 python3.11 src/runtime_entrypoints.py install-harvest-cron
 python3.11 src/runtime_entrypoints.py remove-harvest-cron
+python3.11 src/runtime_entrypoints.py remove-one-shot-harvest-cron
+python3.11 src/runtime_entrypoints.py schedule-harvest-next-minute
 python3.11 src/runtime_entrypoints.py run-harvest-cron
 python3.11 src/runtime_entrypoints.py harvest-status
 python3.11 src/runtime_entrypoints.py show-recent-jobs 25
 python3.11 src/runtime_entrypoints.py tail-harvest-logs
+```
+
+End-to-end validation commands:
+
+```bash
+python3.11 -m unittest discover -s tests -v
+env PATH=/usr/local/opt/node@20/bin:$PATH openspec validate v1-linkedin-core-refactoring
 ```
 
 These runtime commands keep scheduling external to the main harvest application while providing a repo-owned way to install cron entries, trigger a guarded run, and inspect harvest state.

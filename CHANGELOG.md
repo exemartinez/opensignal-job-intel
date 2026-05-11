@@ -5,6 +5,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## - 2026-05-09
+
+### Changed
+- The refactored `src/` runtime surface now documents the purpose of each module and the goal of each class, method, and helper with concise Python docstrings.
+- LinkedIn ingestion now reports persistence results as `persisted`, `new`, and `updated` counts, and emits a machine-readable `persistence_summary` block so duplicate-safe upserts are distinguishable from new inserts.
+- Runtime and usage documentation in `README.md` now reflects the current `src/` command surface, end-to-end ingest commands, runtime helper commands, and OpenSpec validation commands.
+
 ## - 2026-05-07
 
 ### Changed
