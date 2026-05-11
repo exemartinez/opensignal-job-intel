@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from opensignal_job_intel.compass import load_professional_compass
+from src.core_domain_inputs import load_professional_compass
 
 from tests.helpers import load_default_compass
 

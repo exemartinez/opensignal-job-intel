@@ -4,15 +4,19 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from opensignal_job_intel.llm import LlmJsonResult, LocalLlmClient, _parse_json_from_text
-from opensignal_job_intel.models import JobRecord, JobSource, utc_now
-from opensignal_job_intel.services import JobIngestionService
+from src.core_domain_inputs import JobIngestionService, JobRecord, JobSource, utc_now
+from src.linkedin_extraction_filtering import (
+    LlmJsonResult,
+    LocalLlmClient,
+    _parse_json_from_text,
+)
 
 
 class SupportModuleTests(unittest.TestCase):
     def test_job_ingestion_service_normalizes_jobs_before_storage_and_evaluation(self) -> None:
         adapter = Mock()
         repository = Mock()
+        repository.upsert_job.return_value = True
         evaluator = Mock()
         evaluator.evaluate.side_effect = lambda job: {"title": job.title}
         adapter.fetch_jobs.return_value = [
@@ -30,6 +34,8 @@ class SupportModuleTests(unittest.TestCase):
 
         self.assertEqual(1, result.fetched)
         self.assertEqual(1, result.stored)
+        self.assertEqual(1, result.inserted)
+        self.assertEqual(0, result.updated)
         stored_job = repository.upsert_job.call_args.args[0]
         self.assertEqual("Example", stored_job.company)
         self.assertEqual("Staff Data Architect", stored_job.title)

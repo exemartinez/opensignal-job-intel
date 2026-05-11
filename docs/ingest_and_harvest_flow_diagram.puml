@@ -1,0 +1,152 @@
+@startuml
+title Ingest + Harvest Flow Diagram (`src` Target)
+
+skinparam shadowing false
+skinparam noteBackgroundColor #FFFCE8
+skinparam noteBorderColor #C8B97E
+skinparam activity {
+  BackgroundColor #F8F8F8
+  BorderColor #666666
+  DiamondBackgroundColor #FFFCE8
+  DiamondBorderColor #666666
+}
+
+start
+
+partition "CLI Entry" {
+  :`main.py` -> `src.runtime_entrypoints.main()`;
+  if (command?) then (ingest-linkedin)
+    :parse ingest args;
+  else (harvest-linkedin)
+    :parse harvest args;
+  endif
+}
+
+if (ingest-linkedin) then (yes)
+  partition "Ingest Setup" {
+    :create SQLiteJobRepository;
+    :initialize repository;
+    :load ProfessionalCompass;
+    if (`--source-file` present?) then (yes)
+      :create LinkedInJsonFileAdapter;
+    else (no)
+      :create LinkedInScrapeAdapter;
+    endif
+    :create JobCompassEvaluator;
+    :create JobIngestionService;
+  }
+
+  partition "Ingest Execution" {
+    :JobIngestionService.ingest();
+    :adapter.fetch_jobs();
+    if (fixture mode?) then (yes)
+      :load JSON fixture items;
+      :normalize to JobRecord;
+    else (no)
+      :derive search queries from ProfessionalCompass;
+      repeat
+        :build LinkedIn search URL;
+        :fetch search HTML;
+        :extract job ids;
+      repeat while (pages/queries remain and max jobs not hit)
+      repeat
+        :fetch job detail HTML;
+        if (deterministic extraction works?) then (yes)
+          :extract JobRecord from detail HTML;
+        else (no)
+          :try LLM fallback extraction;
+        endif
+        :apply post-age/workplace/region filters;
+        if (`--write-fixture` enabled?) then (yes)
+          :serialize canonical fixture row;
+        endif
+      repeat while (job ids remain)
+    endif
+  }
+
+  partition "Ingest Persistence + Output" {
+    repeat
+      :normalize JobRecord;
+      :repository.upsert_job();
+      :evaluator.evaluate(job);
+    repeat while (jobs remain)
+    :print ingestion summary;
+    :print acquisition diagnostics if available;
+    :print evaluation JSON rows;
+  }
+
+else (harvest-linkedin)
+  partition "Harvest Setup" {
+    :create SQLiteJobRepository;
+    :initialize repository;
+    :load ProfessionalCompass;
+    :resolve schedule path;
+    :load HarvestSchedule;
+    :create LinkedInNightlyHarvester;
+  }
+
+  partition "Harvest Run" {
+    :load HarvestRunState;
+    :derive HarvestSearchPlan list from compass;
+    if (inside schedule window?) then (yes)
+      repeat
+        :load HarvestQueryState for plan;
+        repeat
+          :build harvest search URL;
+          :request search page;
+          if (403 throttle?) then (yes)
+            :update backoff + sticky caution;
+            :persist HarvestRunState;
+          else (no)
+            :extract job ids;
+            :separate known ids from new ids;
+            :update query state counters;
+            if (stale stream / empty threshold?) then (stop)
+              :record stop reason;
+              break
+            else (continue)
+              repeat
+                :request detail page;
+                if (403 throttle?) then (yes)
+                  :persist states and return;
+                else (no)
+                  :extract JobRecord (deterministic or LLM fallback);
+                  :apply harvest filters;
+                  if (allowed?) then (yes)
+                    :repository.upsert_job(job.normalized());
+                    :update run/query success timestamps;
+                  else (no)
+                    :record dropped_filtered;
+                  endif
+                endif
+              repeat while (new ids remain)
+            endif
+          endif
+          :persist HarvestQueryState;
+          :persist HarvestRunState;
+        repeat while (window active and max_jobs not hit and max_pages not hit)
+      repeat while (plans remain and window active and max_jobs not hit)
+    else (no)
+      :log "outside configured window";
+    endif
+  }
+
+  partition "Harvest Output" {
+    :log final harvest summary;
+    :print harvest_summary JSON;
+  }
+endif
+
+stop
+
+note right
+  Runtime commands are not part of the ingest/harvest domain flow.
+  They delegate into `HarvestCronScripts`, which installs
+  cron blocks, launches guarded harvest runs, and exposes
+  operational status/log helpers.
+  The runtime surface is:
+  - `src/runtime_entrypoints.py`
+  - `src/persistence_runtime_ops.py`
+end note
+
+@enduml

@@ -5,8 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from opensignal_job_intel.models import JobRecord, JobSource, utc_now
-from opensignal_job_intel.repositories.sqlite_jobs import SQLiteJobRepository
+from src.core_domain_inputs import JobRecord, JobSource, utc_now
+from src.persistence_runtime_ops import SQLiteJobRepository
 
 
 class SQLiteRepositoryTests(unittest.TestCase):
@@ -61,11 +61,13 @@ class SQLiteRepositoryTests(unittest.TestCase):
                 salary_text="$8,000 - $10,000 monthly",
             )
 
-            repository.upsert_job(first)
-            repository.upsert_job(second)
+            first_inserted = repository.upsert_job(first)
+            second_inserted = repository.upsert_job(second)
             count = repository.count_jobs()
             jobs = repository.list_jobs()
 
+        self.assertTrue(first_inserted)
+        self.assertFalse(second_inserted)
         self.assertEqual(1, count)
         self.assertEqual("Staff Data Architect", jobs[0].title)
         self.assertEqual("Updated version", jobs[0].description)

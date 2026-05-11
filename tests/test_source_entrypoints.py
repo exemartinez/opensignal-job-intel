@@ -1,39 +1,34 @@
 from __future__ import annotations
 
-import runpy
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-
-ENTRYPOINTS = [
-    "harvest_status.py",
-    "install_continuous_hourly_harvest_cron.py",
-    "install_harvest_cron.py",
-    "remove_harvest_cron.py",
-    "remove_one_shot_harvest_cron.py",
-    "run_harvest_cron.py",
-    "schedule_harvest_next_minute.py",
-    "show_recent_jobs.py",
-    "tail_harvest_logs.py",
-]
+from src.runtime_entrypoints import RuntimeEntrypoints
 
 
 class SourceEntrypointSmokeTests(unittest.TestCase):
-    def test_entrypoints_dispatch_to_run_script(self) -> None:
-        sources_dir = Path("opensignal_job_intel/sources")
-        for filename in ENTRYPOINTS:
-            script_path = sources_dir / filename
-            with self.subTest(filename=filename):
-                with patch(
-                    "opensignal_job_intel.sources.linkedin_harvest_ops.run_script",
-                    return_value=17,
-                ) as run_script:
-                    with self.assertRaises(SystemExit) as exit_info:
-                        runpy.run_path(str(script_path), run_name="__main__")
-                self.assertEqual(17, exit_info.exception.code)
-                run_script.assert_called_once()
-                self.assertTrue(str(run_script.call_args.args[0]).endswith(filename))
+    def test_runtime_commands_delegate_to_harvest_cron_scripts(self) -> None:
+        commands = [
+            "harvest-status",
+            "install-continuous-hourly-harvest-cron",
+            "install-harvest-cron",
+            "remove-harvest-cron",
+            "remove-one-shot-harvest-cron",
+            "run-harvest-cron",
+            "schedule-harvest-next-minute",
+            "show-recent-jobs",
+            "tail-harvest-logs",
+        ]
+        for command in commands:
+            with self.subTest(command=command):
+                with patch("src.runtime_entrypoints.HarvestCronScripts") as scripts_cls:
+                    scripts_cls.return_value.run.return_value = 17
+                    result = RuntimeEntrypoints.main(
+                        [command] if command != "show-recent-jobs" else [command, "25"]
+                    )
+                self.assertEqual(17, result)
+                scripts_cls.assert_called_once_with(Path("src/runtime_entrypoints.py").resolve())
 
 
 if __name__ == "__main__":

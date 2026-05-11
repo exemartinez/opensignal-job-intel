@@ -4,15 +4,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from opensignal_job_intel.models import JobRecord, JobSource, utc_now
-from opensignal_job_intel.repositories.sqlite_jobs import SQLiteJobRepository
-from opensignal_job_intel.sources.linkedin_acquire import _passes_filters
-from opensignal_job_intel.sources.linkedin_extraction import (
+from src.core_domain_inputs import JobRecord, JobSource, utc_now
+from src.linkedin_acquisition import _passes_filters
+from src.linkedin_extraction_filtering import (
     LinkedInExtractionSpec,
     extract_job_from_detail_html,
     extract_job_ids_from_search_html,
     validate_extraction_spec,
 )
+from src.persistence_runtime_ops import SQLiteJobRepository
 
 
 class LinkedInExtractionTests(unittest.TestCase):

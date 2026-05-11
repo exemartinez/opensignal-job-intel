@@ -17,18 +17,18 @@ The system SHALL support a long-running harvest mode configured by a local sched
 - **THEN** the system runs only while the current local time remains within that window
 - **AND** it stops cleanly when the window ends
 
-### Requirement: Source-local operational entrypoints
-The system SHALL provide repo-owned Python operational entrypoints for LinkedIn harvest installation and monitoring alongside the LinkedIn source implementation.
+### Requirement: Runtime operational entrypoints
+The system SHALL provide repo-owned Python operational entrypoints for LinkedIn harvest installation and monitoring through the unified runtime surface.
 
 #### Scenario: Cron install helper remains external to core harvest loop
 - **WHEN** the user wants to schedule recurring LinkedIn harvest runs
-- **THEN** the repository provides a Python entrypoint under `opensignal_job_intel/sources/` that installs the cron command
+- **THEN** the repository provides a Python entrypoint through `src/runtime_entrypoints.py` that installs the cron command
 - **AND** the scheduling mechanism remains external to the `harvest-linkedin` application command itself
 - **AND** the installed cron command uses an absolute Python interpreter path from the install environment
 
-#### Scenario: Runtime monitoring helpers are source-local
+#### Scenario: Runtime monitoring helpers are available through the runtime surface
 - **WHEN** the user wants to inspect the current harvest process, recent stored jobs, or harvest logs
-- **THEN** the repository provides Python entrypoints under `opensignal_job_intel/sources/` for those operations
+- **THEN** the repository provides Python entrypoints through `src/runtime_entrypoints.py` for those operations
 
 ### Requirement: Pacing and randomized backoff
 The system SHALL pace acquisition requests and apply randomized backoff under throttling to reduce the likelihood of being blocked.
@@ -61,3 +61,27 @@ The system SHALL provide verbose timestamped logging suitable for overnight batc
 - **WHEN** harvest mode is running
 - **THEN** the system emits request and event log lines with local timestamps
 - **AND** it periodically prints summary lines with counts for requests, new jobs discovered, jobs stored, and jobs dropped/filtered
+
+### Requirement: Harvest orchestration is decomposed behind stable runtime behavior
+The LinkedIn harvest implementation SHALL reorganize query planning, filter
+evaluation, pacing/backoff, runtime state access, and result persistence behind
+clear collaborators while preserving current harvest behavior.
+
+#### Scenario: Harvest flow remains behaviorally stable
+- **WHEN** the harvest internals are reorganized
+- **THEN** the existing harvest command still honors schedule gating, resume
+  state, filtering rules, and logging behavior
+- **AND** those behaviors are implemented through explicit collaborators rather
+  than one large mixed-responsibility module
+
+### Requirement: Harvest operational helpers remain thin and external
+The harvest operational helper modules SHALL remain external runtime entrypoints
+that delegate into runtime-support collaborators rather than embedding harvest
+domain logic directly.
+
+#### Scenario: Operational helper behavior is preserved
+- **WHEN** the refactor reorganizes cron installation, status, log tailing, or
+  recent-job support
+- **THEN** the operational helper entrypoints continue to expose the same
+  runtime functions
+- **AND** the helper modules remain thin wrappers over runtime-support classes

@@ -8,9 +8,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from opensignal_job_intel.models import JobRecord, JobSource, utc_now
-from opensignal_job_intel.sources.linkedin import LinkedInJsonFileAdapter, LinkedInScrapeAdapter
-from opensignal_job_intel.sources.linkedin_acquire import (
+from src.core_domain_inputs import JobRecord, JobSource, utc_now
+from src.linkedin_acquisition import (
+    LinkedInJsonFileAdapter,
+    LinkedInScrapeAdapter,
     _build_search_url,
     _derive_queries,
     _job_to_fixture_item,
@@ -64,7 +65,7 @@ class LinkedInAdapterTests(unittest.TestCase):
         )
 
         with patch(
-            "opensignal_job_intel.sources.linkedin_acquire.urllib.request.urlopen",
+            "src.linkedin_acquisition.urllib.request.urlopen",
             side_effect=urllib.error.URLError(OSError(8, "nodename nor servname provided, or not known")),
         ):
             result = adapter._fetch_text("https://www.linkedin.com/jobs/search/?keywords=test", kind="search")

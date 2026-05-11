@@ -5,10 +5,8 @@ import unittest
 from datetime import time
 from pathlib import Path
 
-from opensignal_job_intel.models import JobRecord, JobSource, ProfessionalCompass, utc_now
-from opensignal_job_intel.repositories.sqlite_jobs import SQLiteJobRepository
-from opensignal_job_intel.sources.linkedin_acquire import _derive_region
-from opensignal_job_intel.sources.linkedin_harvest import (
+from src.core_domain_inputs import JobRecord, JobSource, ProfessionalCompass, utc_now
+from src.harvest_orchestration import (
     _build_harvest_search_url,
     _derive_search_plans,
     _evaluate_harvest_filters,
@@ -16,6 +14,8 @@ from opensignal_job_intel.sources.linkedin_harvest import (
     LinkedInNightlyHarvester,
     load_harvest_schedule,
 )
+from src.linkedin_acquisition import _derive_region
+from src.persistence_runtime_ops import SQLiteJobRepository
 from tests.helpers import load_default_compass, make_harvest_schedule
 
 
@@ -119,10 +119,10 @@ logging:
             override_path.write_text("window:\n  start: '00:00'\n  end: '08:00'\n", encoding="utf-8")
 
             with unittest.mock.patch(
-                "opensignal_job_intel.sources.linkedin_harvest.LOCAL_SCHEDULE_OVERRIDE_PATH",
+                "src.harvest_orchestration.LOCAL_SCHEDULE_OVERRIDE_PATH",
                 str(override_path),
             ):
-                from opensignal_job_intel.sources.linkedin_harvest import resolve_harvest_schedule_path
+                from src.harvest_orchestration import resolve_harvest_schedule_path
 
                 resolved = resolve_harvest_schedule_path(None)
 

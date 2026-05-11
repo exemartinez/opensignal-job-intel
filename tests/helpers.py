@@ -3,8 +3,11 @@ from __future__ import annotations
 from datetime import time
 from pathlib import Path
 
-from opensignal_job_intel.compass import load_professional_compass
-from opensignal_job_intel.models import HarvestSchedule, ProfessionalCompass
+from src.core_domain_inputs import (
+    HarvestSchedule,
+    ProfessionalCompass,
+    load_professional_compass,
+)
 
 
 def load_default_compass() -> ProfessionalCompass:
