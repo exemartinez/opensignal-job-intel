@@ -22,7 +22,7 @@ The repository is a working local-first prototype.
 
 It can:
 - load a professional compass (your local job-search intent and constraints)
-- ingest LinkedIn or Indeed jobs via either a fixture-backed adapter or live acquisition (scraping)
+- ingest LinkedIn, Indeed, or Wellfound jobs via either a fixture-backed adapter or live acquisition (scraping)
 - store canonical jobs in SQLite with additive schema evolution
 - score each stored job via a lightweight rule-based evaluator for human review
 
@@ -211,6 +211,28 @@ Optional environment variables for live Indeed scraping:
 Live Indeed search-card rows are only persisted when the scraper can derive a
 real href-backed `jk` value and normalize it into a canonical
 `https://www.indeed.com/viewjob?jk=...` URL.
+
+Wellfound fixture mode (offline):
+
+```bash
+python3.11 main.py ingest-wellfound \
+  --compass-file profiles/professional_compass.json \
+  --source-file sample_wellfound_jobs.json \
+  --db-path data/jobs.db \
+  --limit 10
+```
+
+Wellfound live mode (scraping):
+
+```bash
+python3.11 main.py ingest-wellfound \
+  --compass-file profiles/professional_compass.json \
+  --db-path data/jobs.db \
+  --limit 10 \
+  --max-jobs 25 \
+  --write-fixture data/live_wellfound_fixture.json \
+  --capture-dir data/wellfound_captures
+```
 
 Optional flags:
 

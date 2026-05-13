@@ -49,6 +49,19 @@ class CliTests(unittest.TestCase):
         self.assertEqual(5, result)
         run_ingest.assert_called_once_with(parser.parse_args.return_value)
 
+    def test_main_dispatches_wellfound_ingest_command(self) -> None:
+        parser = Mock()
+        parser.parse_args.return_value = argparse.Namespace(command="ingest-wellfound")
+
+        with (
+            patch("src.runtime_entrypoints.build_parser", return_value=parser),
+            patch("src.runtime_entrypoints._run_wellfound_ingest", return_value=6) as run_ingest,
+        ):
+            result = cli.main()
+
+        self.assertEqual(6, result)
+        run_ingest.assert_called_once_with(parser.parse_args.return_value)
+
     def test_run_ingest_uses_fixture_adapter_when_source_file_is_provided(self) -> None:
         args = argparse.Namespace(
             compass_file="profiles/professional_compass.json",
@@ -245,6 +258,82 @@ class CliTests(unittest.TestCase):
         ):
             service_cls.return_value.ingest.return_value = result
             exit_code = cli._run_indeed_ingest(args)
+
+        self.assertEqual(0, exit_code)
+        json_adapter.assert_not_called()
+        scrape_adapter.assert_called_once_with(
+            compass=compass,
+            max_jobs=25,
+            capture_dir="data/captures",
+            write_fixture_path="data/fixture.json",
+        )
+
+    def test_run_wellfound_ingest_uses_fixture_adapter_when_source_file_is_provided(self) -> None:
+        args = argparse.Namespace(
+            compass_file="profiles/professional_compass.json",
+            source_file="sample_wellfound_jobs.json",
+            max_jobs=30,
+            capture_dir=None,
+            write_fixture=None,
+            db_path="data/jobs.db",
+            limit=10,
+        )
+        repository = Mock()
+        repository.count_jobs.return_value = 3
+        compass = SimpleNamespace(search_max_post_age_days=None)
+        result = SimpleNamespace(fetched=2, stored=2, inserted=1, updated=1, evaluations=[])
+
+        with (
+            patch("src.runtime_entrypoints.SQLiteJobRepository", return_value=repository),
+            patch("src.runtime_entrypoints.load_professional_compass", return_value=compass),
+            patch("src.runtime_entrypoints.WellfoundJsonFileAdapter", return_value="fixture-adapter") as json_adapter,
+            patch("src.runtime_entrypoints.WellfoundScrapeAdapter") as scrape_adapter,
+            patch("src.runtime_entrypoints.JobCompassEvaluator", return_value="evaluator") as evaluator,
+            patch("src.runtime_entrypoints.JobIngestionService") as service_cls,
+            patch("builtins.print"),
+        ):
+            service = service_cls.return_value
+            service.ingest.return_value = result
+            exit_code = cli._run_wellfound_ingest(args)
+
+        self.assertEqual(0, exit_code)
+        repository.initialize.assert_called_once_with()
+        json_adapter.assert_called_once_with("sample_wellfound_jobs.json")
+        scrape_adapter.assert_not_called()
+        evaluator.assert_called_once_with(compass)
+        service_cls.assert_called_once_with(
+            adapter="fixture-adapter",
+            repository=repository,
+            evaluator="evaluator",
+        )
+        service.ingest.assert_called_once_with()
+
+    def test_run_wellfound_ingest_uses_live_scrape_adapter_without_source_file(self) -> None:
+        args = argparse.Namespace(
+            compass_file="profiles/professional_compass.json",
+            source_file=None,
+            max_jobs=25,
+            capture_dir="data/captures",
+            write_fixture="data/fixture.json",
+            db_path="data/jobs.db",
+            limit=10,
+        )
+        repository = Mock()
+        repository.count_jobs.return_value = 0
+        compass = SimpleNamespace(search_max_post_age_days=None)
+        result = SimpleNamespace(fetched=0, stored=0, inserted=0, updated=0, evaluations=[])
+
+        with (
+            patch("src.runtime_entrypoints.SQLiteJobRepository", return_value=repository),
+            patch("src.runtime_entrypoints.load_professional_compass", return_value=compass),
+            patch("src.runtime_entrypoints.WellfoundJsonFileAdapter") as json_adapter,
+            patch("src.runtime_entrypoints.WellfoundScrapeAdapter", return_value="scrape-adapter") as scrape_adapter,
+            patch("src.runtime_entrypoints.JobCompassEvaluator", return_value="evaluator"),
+            patch("src.runtime_entrypoints.JobIngestionService") as service_cls,
+            patch("builtins.print"),
+        ):
+            service_cls.return_value.ingest.return_value = result
+            exit_code = cli._run_wellfound_ingest(args)
 
         self.assertEqual(0, exit_code)
         json_adapter.assert_not_called()

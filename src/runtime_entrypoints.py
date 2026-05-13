@@ -25,6 +25,7 @@ from src.harvest_orchestration import (
 )
 from src.indeed_acquisition import IndeedJsonFileAdapter, IndeedScrapeAdapter
 from src.linkedin_acquisition import LinkedInJsonFileAdapter, LinkedInScrapeAdapter
+from src.wellfound_acquisition import WellfoundJsonFileAdapter, WellfoundScrapeAdapter
 from src.persistence_runtime_ops import HarvestCronScripts, SQLiteJobRepository
 
 
@@ -68,6 +69,18 @@ class RuntimeEntrypoints:
         indeed.add_argument("--db-path", default="data/jobs.db")
         indeed.add_argument("--limit", type=int, default=10)
 
+        wellfound = subparsers.add_parser(
+            "ingest-wellfound",
+            help="Ingest Wellfound jobs (fixture mode or live acquisition) into SQLite and score them.",
+        )
+        wellfound.add_argument("--compass-file", default="profiles/professional_compass.json")
+        wellfound.add_argument("--source-file")
+        wellfound.add_argument("--max-jobs", type=int, default=30)
+        wellfound.add_argument("--capture-dir", default=None)
+        wellfound.add_argument("--write-fixture", default=None)
+        wellfound.add_argument("--db-path", default="data/jobs.db")
+        wellfound.add_argument("--limit", type=int, default=10)
+
         harvest = subparsers.add_parser(
             "harvest-linkedin",
             help="Run the nightly LinkedIn harvest orchestrator into SQLite.",
@@ -103,6 +116,8 @@ class RuntimeEntrypoints:
             return _run_ingest(args)
         if args.command == "ingest-indeed":
             return _run_indeed_ingest(args)
+        if args.command == "ingest-wellfound":
+            return _run_wellfound_ingest(args)
         if args.command == "harvest-linkedin":
             return _run_harvest(args)
         return RuntimeEntrypoints.run_runtime_command(args)
@@ -138,6 +153,20 @@ class RuntimeEntrypoints:
             ),
         )
 
+    @staticmethod
+    def run_wellfound_ingest(args: argparse.Namespace) -> int:
+        """Run fixture or live Wellfound ingestion and print the summary."""
+        return RuntimeEntrypoints._run_source_ingest(
+            args=args,
+            source_label="Wellfound",
+            fixture_adapter_cls=WellfoundJsonFileAdapter,
+            live_adapter_factory=lambda compass: WellfoundScrapeAdapter(
+                compass=compass,
+                max_jobs=args.max_jobs,
+                capture_dir=args.capture_dir,
+                write_fixture_path=args.write_fixture,
+            ),
+        )
     @staticmethod
     def _run_source_ingest(
         *,
@@ -251,6 +280,10 @@ def _run_indeed_ingest(args: argparse.Namespace) -> int:
     """Expose Indeed ingest execution at module scope for patch-friendly tests."""
     return RuntimeEntrypoints.run_indeed_ingest(args)
 
+def _run_wellfound_ingest(args: argparse.Namespace) -> int:
+    """Expose Wellfound ingest execution at module scope for patch-friendly tests."""
+    return RuntimeEntrypoints.run_wellfound_ingest(args)
+
 
 def _run_harvest(args: argparse.Namespace) -> int:
     """Expose harvest execution at module scope for patch-friendly tests."""
@@ -267,5 +300,6 @@ __all__ = [
     "main",
     "_run_ingest",
     "_run_indeed_ingest",
+    "_run_wellfound_ingest",
     "_run_harvest",
 ]
