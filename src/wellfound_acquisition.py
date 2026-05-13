@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from datetime import timedelta
 
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
@@ -357,6 +358,14 @@ def extract_job_from_detail_html(
     description = _extract_about_job_text(html_text)
     link = _extract_canonical_job_link(html_text) or fallback_link
     external_job_id = _extract_job_id(link)
+    post_datetime = parse_optional_datetime(_extract_posted_at_iso(html_text))
+    post_age_text = _extract_post_age_text(html_text)
+    post_age_days = _parse_post_age_days(post_age_text)
+    if post_datetime is None and post_age_days is not None:
+        # Match the repo-wide approach: infer a best-effort posting datetime from a
+        # relative age signal. (Persistence layer also infers, but doing it here
+        # keeps the in-memory record self-consistent for filtering.)
+        post_datetime = collected_at - timedelta(days=post_age_days)
 
     title = title.strip()
     company = company.strip()
@@ -372,9 +381,20 @@ def extract_job_from_detail_html(
         company=company,
         title=title,
         description=description,
+        post_datetime=post_datetime,
         link=link,
+        post_age_text=post_age_text,
+        post_age_days=post_age_days,
         collected_at=collected_at,
     )
+
+
+def parse_optional_datetime(value: str | None) -> datetime | None:
+    """Parse an ISO-like datetime string when present."""
+    if not value:
+        return None
+    normalized = value.replace("Z", "+00:00")
+    return datetime.fromisoformat(normalized)
 
 
 def _extract_job_id(link: str) -> str | None:
@@ -440,6 +460,73 @@ def _extract_canonical_job_link(html_text: str) -> str | None:
     return match.group(1).strip() if match else None
 
 
+def _extract_posted_at_iso(html_text: str) -> str | None:
+    """Extract an ISO-like posting datetime from JSON-LD when present."""
+    # Many job sites embed JobPosting JSON-LD which may include datePosted/datePublished.
+    matches = re.findall(
+        r"<script[^>]*type=\"application/ld\+json\"[^>]*>(.*?)</script>",
+        html_text,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    for raw in matches:
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            payload = json.loads(raw)
+        except Exception:
+            continue
+        for item in payload if isinstance(payload, list) else [payload]:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("@type") or "").lower() != "jobposting":
+                continue
+            value = item.get("datePosted") or item.get("datePublished")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return None
+
+
+def _extract_post_age_text(html_text: str) -> str | None:
+    """Extract a relative-age string such as 'Posted 3 days ago'."""
+    match = re.search(
+        r"(posted\s+(?:just now|today|\d+\s+(?:minute|hour|day|week|month|year)s?\s+ago))",
+        html_text,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        return re.sub(r"\s+", " ", match.group(1).strip())
+    return None
+
+
+def _parse_post_age_days(value: str | None) -> int | None:
+    """Convert a relative-age string into an approximate day count."""
+    if not value:
+        return None
+    normalized = re.sub(r"\s+", " ", value.strip().lower())
+    normalized = normalized.replace("posted ", "")
+    if normalized in {"just now", "today"}:
+        return 0
+    match = re.search(r"(\d+)\s+(minute|hour|day|week|month|year)s?\s+ago", normalized)
+    if not match:
+        return None
+    amount = int(match.group(1))
+    unit = match.group(2)
+    if unit == "minute":
+        return 0
+    if unit == "hour":
+        return 0
+    if unit == "day":
+        return amount
+    if unit == "week":
+        return amount * 7
+    if unit == "month":
+        return amount * 30
+    if unit == "year":
+        return amount * 365
+    return None
+
+
 def _strip_tags(value: str) -> str:
     """Convert HTML into plain text by dropping tags and normalizing whitespace."""
     text = re.sub(r"<script[^>]*>.*?</script>", " ", value, flags=re.IGNORECASE | re.DOTALL)
@@ -479,9 +566,15 @@ def _passes_filters(
     allowed_regions: list[str] | None,
 ) -> bool:
     """Apply best-effort age, workplace, and region filters to a job."""
-    if max_post_age_days is not None and job.post_age_days is not None:
-        if job.post_age_days > max_post_age_days:
-            return False
+    if max_post_age_days is not None:
+        # Prefer explicit relative-age when available, otherwise use post_datetime.
+        if job.post_age_days is not None:
+            if job.post_age_days > max_post_age_days:
+                return False
+        elif job.post_datetime is not None:
+            age_days = (job.collected_at.date() - job.post_datetime.date()).days
+            if age_days > max_post_age_days:
+                return False
 
     if allowed_workplace_types is not None and job.workplace_type is not None:
         if job.workplace_type.strip().lower() not in allowed_workplace_types:
