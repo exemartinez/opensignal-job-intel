@@ -234,6 +234,15 @@ python3.11 main.py ingest-wellfound \
   --capture-dir data/wellfound_captures
 ```
 
+Live Wellfound scraping is browser-backed (Selenium) to avoid guest-page 403
+blocks on job detail pages.
+
+Optional environment variables for live Wellfound scraping:
+
+- `WELLFOUND_BROWSER=safari|chrome|firefox`
+- `WELLFOUND_BROWSER_WAIT_SECONDS=15`
+- `WELLFOUND_COOKIES="name=value; other=value"` when you need to preload a browser session
+
 Optional flags:
 
 - `--db-path data/jobs.db` to choose the SQLite file location

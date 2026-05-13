@@ -22,6 +22,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from selenium import webdriver
+from selenium.common.exceptions import WebDriverException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+
 from src.core_domain_inputs import (
     JobRecord,
     JobSource,
@@ -84,8 +89,10 @@ class WellfoundScrapeAdapter(JobSourceAdapter):
         self._capture_dir = Path(capture_dir) if capture_dir else None
         self._write_fixture_path = Path(write_fixture_path) if write_fixture_path else None
 
-        # Optional cookie header for environments where guest mode is blocked.
+        # Browser-backed live acquisition (Wellfound is frequently protected).
         self._cookies = os.environ.get("WELLFOUND_COOKIES")
+        self._browser_name = os.environ.get("WELLFOUND_BROWSER", "chrome")
+        self._wait_seconds = float(os.environ.get("WELLFOUND_BROWSER_WAIT_SECONDS", "15"))
 
         self.diagnostics = WellfoundAcquisitionDiagnostics()
 
@@ -98,54 +105,63 @@ class WellfoundScrapeAdapter(JobSourceAdapter):
 
         queries = _derive_queries(self._compass, limit=self._max_queries)
         job_links: list[str] = []
-        for query in queries:
-            for page in range(self._max_pages_per_query):
-                search_url = _build_search_url(query=query, page=page)
-                html_text = self._fetch_text(search_url, kind="search")
-                if not html_text:
-                    continue
-                self.diagnostics.search_pages += 1
-                job_links.extend(extract_job_links_from_search_html(html_text))
-                if len(set(job_links)) >= self._max_jobs:
-                    break
-            if len(set(job_links)) >= self._max_jobs:
-                break
-
-        unique_links = list(dict.fromkeys(job_links))[: self._max_jobs]
         jobs: list[JobRecord] = []
         raw_fixture: list[dict[str, object]] = []
-        for link in unique_links:
-            html_text = self._fetch_text(link, kind="job")
-            if not html_text:
-                self.diagnostics.dropped += 1
-                self.diagnostics.drops.append(f"missing_detail_html:{link}")
-                continue
-            self.diagnostics.job_detail_pages += 1
+        try:
+            with self._browser_session() as session:
+                for query in queries:
+                    for page in range(self._max_pages_per_query):
+                        search_url = _build_search_url(query=query, page=page)
+                        html_text = self._fetch_text(search_url, kind="search", session=session)
+                        if not html_text:
+                            continue
+                        self.diagnostics.search_pages += 1
+                        job_links.extend(extract_job_links_from_search_html(html_text))
+                        if len(set(job_links)) >= self._max_jobs:
+                            break
+                    if len(set(job_links)) >= self._max_jobs:
+                        break
 
-            job = extract_job_from_detail_html(
-                html_text,
-                collected_at=collected_at,
-                fallback_link=link,
+                unique_links = list(dict.fromkeys(job_links))[: self._max_jobs]
+                for link in unique_links:
+                    html_text = self._fetch_text(link, kind="job", session=session)
+                    if not html_text:
+                        self.diagnostics.dropped += 1
+                        self.diagnostics.drops.append(f"missing_detail_html:{link}")
+                        continue
+                    self.diagnostics.job_detail_pages += 1
+
+                    job = extract_job_from_detail_html(
+                        html_text,
+                        collected_at=collected_at,
+                        fallback_link=link,
+                    )
+                    if job is None:
+                        self.diagnostics.parse_failures += 1
+                        self.diagnostics.dropped += 1
+                        self.diagnostics.drops.append(f"parse_failed:{link}")
+                        continue
+                    self.diagnostics.record_extraction_mode("deterministic")
+
+                    if not _passes_filters(
+                        job,
+                        max_post_age_days=max_age_days,
+                        allowed_workplace_types=allowed_workplace,
+                        allowed_regions=allowed_regions,
+                    ):
+                        self.diagnostics.dropped += 1
+                        self.diagnostics.drops.append(f"filtered:{job.external_job_id or link}")
+                        continue
+
+                    jobs.append(job)
+                    raw_fixture.append(_job_to_fixture_item(job))
+                    if len(jobs) >= self._max_jobs:
+                        break
+        except Exception as exc:
+            self.diagnostics.dropped += 1
+            self.diagnostics.drops.append(
+                f"browser_session_failed:{self._browser_name}:{type(exc).__name__}:{exc}"
             )
-            if job is None:
-                self.diagnostics.parse_failures += 1
-                self.diagnostics.dropped += 1
-                self.diagnostics.drops.append(f"parse_failed:{link}")
-                continue
-            self.diagnostics.record_extraction_mode("deterministic")
-
-            if not _passes_filters(
-                job,
-                max_post_age_days=max_age_days,
-                allowed_workplace_types=allowed_workplace,
-                allowed_regions=allowed_regions,
-            ):
-                self.diagnostics.dropped += 1
-                self.diagnostics.drops.append(f"filtered:{job.external_job_id or link}")
-                continue
-
-            jobs.append(job)
-            raw_fixture.append(_job_to_fixture_item(job))
 
         if self._write_fixture_path:
             self._write_fixture_path.parent.mkdir(parents=True, exist_ok=True)
@@ -156,35 +172,123 @@ class WellfoundScrapeAdapter(JobSourceAdapter):
 
         return jobs
 
-    def _fetch_text(self, url: str, kind: str) -> str | None:
-        """Fetch one Wellfound page and record request diagnostics."""
-        headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; opensignal-job-intel/1.0)",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
-        if self._cookies:
-            headers["Cookie"] = self._cookies
+    def _browser_session(self) -> "WellfoundBrowserSession":
+        """Create the browser-backed fetch session for one live run."""
+        return WellfoundBrowserSession(
+            browser_name=self._browser_name,
+            request_delay_seconds=self._request_delay_seconds,
+            wait_seconds=self._wait_seconds,
+            cookie_header=self._cookies,
+        )
 
+    def _fetch_text(
+        self,
+        url: str,
+        *,
+        kind: str,
+        session: "WellfoundBrowserSession",
+    ) -> str | None:
+        """Fetch one Wellfound document through Selenium and record diagnostics."""
         self.diagnostics.requests += 1
         try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=30, context=_ssl_context()) as resp:
-                text = resp.read().decode("utf-8", errors="replace")
-                if self._capture_dir:
-                    safe = urllib.parse.quote_plus(url)[:120]
-                    _write_capture(self._capture_dir, f"{kind}_{safe}.html", text)
-                return text
-        except urllib.error.HTTPError as exc:
+            text = session.fetch_text(url, kind)
+            if self._capture_dir:
+                safe = urllib.parse.quote_plus(url)[:120]
+                _write_capture(self._capture_dir, f"wellfound_{kind}_{safe}.html", text)
+            return text
+        except WebDriverException as exc:
             self.diagnostics.dropped += 1
-            self.diagnostics.drops.append(f"http_{exc.code}:{kind}:{url}")
+            self.diagnostics.drops.append(
+                f"browser_error:{kind}:{url}:{type(exc).__name__}:{exc}"
+            )
             return None
-        except urllib.error.URLError as exc:
-            self.diagnostics.dropped += 1
-            self.diagnostics.drops.append(_format_url_error(kind=kind, url=url, error=exc))
-            return None
-        finally:
-            if self._request_delay_seconds > 0:
-                time.sleep(self._request_delay_seconds)
+
+
+class WellfoundBrowserSession:
+    """Manage a Selenium-backed session for fetching Wellfound pages."""
+
+    def __init__(
+        self,
+        *,
+        browser_name: str,
+        request_delay_seconds: float,
+        wait_seconds: float,
+        cookie_header: str | None,
+    ) -> None:
+        """Bind browser choice, pacing, and optional cookie preload."""
+        self._browser_name = browser_name
+        self._request_delay_seconds = request_delay_seconds
+        self._wait_seconds = wait_seconds
+        self._cookie_header = cookie_header
+        self._driver = None
+        self._cookies_loaded = False
+
+    def __enter__(self) -> "WellfoundBrowserSession":
+        """Open the Selenium session."""
+        self._driver = self._build_driver()
+        if self._cookie_header:
+            self._prime_cookies(self._driver)
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        """Close the Selenium session."""
+        self.close()
+
+    def fetch_text(self, url: str, kind: str) -> str:
+        """Navigate to a URL and return the rendered HTML."""
+        driver = self._require_driver()
+        driver.get(url)
+        WebDriverWait(driver, self._wait_seconds).until(
+            lambda current: bool(current.find_elements(By.TAG_NAME, "body"))
+        )
+        if self._request_delay_seconds > 0:
+            time.sleep(self._request_delay_seconds)
+        return driver.page_source
+
+    def close(self) -> None:
+        """Quit the active Selenium driver when present."""
+        if self._driver is not None:
+            self._driver.quit()
+            self._driver = None
+
+    def _build_driver(self):
+        """Create the configured Selenium WebDriver instance."""
+        browser = self._browser_name.strip().lower()
+        if browser == "safari":
+            return webdriver.Safari()
+        if browser == "chrome":
+            options = webdriver.ChromeOptions()
+            options.add_argument("--disable-blink-features=AutomationControlled")
+            options.add_argument("--window-size=1440,1200")
+            options.add_argument(
+                "--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+            )
+            return webdriver.Chrome(options=options)
+        if browser == "firefox":
+            options = webdriver.FirefoxOptions()
+            options.set_preference("general.useragent.override", _browser_user_agent())
+            return webdriver.Firefox(options=options)
+        raise ValueError(f"Unsupported Wellfound browser: {self._browser_name}")
+
+    def _prime_cookies(self, driver) -> None:
+        """Load optional user-supplied cookies into the live browser session."""
+        driver.get("https://wellfound.com/")
+        WebDriverWait(driver, self._wait_seconds).until(
+            lambda current: current.execute_script("return document.readyState") == "complete"
+        )
+        for cookie in _parse_cookie_header(self._cookie_header):
+            try:
+                driver.add_cookie(cookie)
+            except WebDriverException:
+                continue
+        self._cookies_loaded = True
+
+    def _require_driver(self):
+        """Return the live driver or fail if the session is not open."""
+        if self._driver is None:
+            raise RuntimeError("Wellfound browser session is not open.")
+        return self._driver
 
 
 class WellfoundJsonFileAdapter(JobSourceAdapter):
@@ -457,6 +561,31 @@ def _ssl_context() -> ssl.SSLContext:
         return ssl.create_default_context(cafile=certifi.where())
     except Exception:
         return ssl.create_default_context()
+
+
+def _browser_user_agent() -> str:
+    """Return a consistent desktop browser user agent string."""
+    return (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+    )
+
+
+def _parse_cookie_header(header: str | None) -> list[dict[str, object]]:
+    """Parse a `Cookie:` header string into Selenium cookie dicts."""
+    if not header:
+        return []
+    cookies: list[dict[str, object]] = []
+    for part in header.split(";"):
+        if "=" not in part:
+            continue
+        name, value = part.split("=", 1)
+        name = name.strip()
+        value = value.strip()
+        if not name:
+            continue
+        cookies.append({"name": name, "value": value, "domain": ".wellfound.com", "path": "/"})
+    return cookies
 
 
 __all__ = [
