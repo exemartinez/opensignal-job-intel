@@ -12,13 +12,14 @@ from dataclasses import asdict, dataclass, replace
 from datetime import datetime, time, timezone
 from enum import StrEnum
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 
 class JobSource(StrEnum):
     """Enumerate the supported upstream job sources."""
 
     LINKEDIN = "linkedin"
+    INDEED = "indeed"
 
 
 class Clock:
@@ -37,7 +38,12 @@ class SourceLinkNormalizer:
     def normalize(link: str) -> str:
         """Strip unstable link parts so deduplication stays stable."""
         parts = urlsplit(link.strip())
-        return urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/"), "", ""))
+        query = ""
+        if "indeed." in parts.netloc and parts.path.rstrip("/") == "/viewjob":
+            params = dict(parse_qsl(parts.query, keep_blank_values=False))
+            if "jk" in params:
+                query = urlencode({"jk": params["jk"]})
+        return urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/"), query, ""))
 
 
 def utc_now() -> datetime:

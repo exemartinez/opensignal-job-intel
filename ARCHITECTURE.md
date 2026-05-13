@@ -22,15 +22,22 @@ The codebase should favor:
 - reduced duplication across acquisition, harvest, and operational flows
 - behavior-oriented tests that allow package and module structure to change safely
 
-The approved structural target for the current LinkedIn refactor is a direct
-Python package named `src` with these top-level modules:
+The approved structural target is a direct Python package named `src` with
+shared runtime/domain modules plus source-local acquisition modules when a new
+platform needs its own adapter.
+
+Core shared modules:
 
 - `core_domain_inputs.py`
-- `linkedin_acquisition.py`
-- `linkedin_extraction_filtering.py`
 - `harvest_orchestration.py`
 - `persistence_runtime_ops.py`
 - `runtime_entrypoints.py`
+
+Current source-local modules:
+
+- `linkedin_acquisition.py`
+- `linkedin_extraction_filtering.py`
+- `indeed_acquisition.py`
 
 ## Current Responsibility Boundaries
 
@@ -46,6 +53,8 @@ Use the current structure intentionally:
   - fixture-backed acquisition, live LinkedIn acquisition, diagnostics, and fixture export
 - `src/linkedin_extraction_filtering.py`
   - extraction/parsing from LinkedIn search/detail HTML plus filtering helpers
+- `src/indeed_acquisition.py`
+  - fixture-backed acquisition, live Indeed acquisition, Indeed extraction, diagnostics, and fixture export
 - `src/harvest_orchestration.py`
   - unattended harvest orchestration, schedule loading, pacing, and stop rules
 - `src/persistence_runtime_ops.py`

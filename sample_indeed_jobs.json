@@ -1,0 +1,20 @@
+[
+  {
+    "id": "indeed-11123",
+    "company": "CRAFTLabs",
+    "title": "Senior Data Scientist",
+    "description": "Remote product team building AI data products with Python, SQL, Snowflake and LLM systems. Hands-on individual contributor role.",
+    "posted_at": "2026-04-15T12:00:00Z",
+    "salary": "$7,000 - $10,000 monthly",
+    "link": "https://www.indeed.com/viewjob?jk=indeed-11123"
+  },
+  {
+    "id": "indeed-11124",
+    "company": "Northstar Data",
+    "title": "Staff Data Engineer",
+    "description": "Remote platform team modernizing batch and streaming pipelines with Python, SQL, dbt, Airflow, Snowflake, and AWS. Deep hands-on architecture and implementation role.",
+    "posted_at": "2026-04-16T09:30:00Z",
+    "salary": "$8,500 - $10,500 monthly",
+    "link": "https://www.indeed.com/viewjob?jk=indeed-11124"
+  }
+]

@@ -107,7 +107,11 @@ class LinkedInScrapeAdapter(JobSourceAdapter):
         job_ids: list[str] = []
         for query in queries:
             for page in range(self._max_pages_per_query):
-                search_url = _build_search_url(query=query, start=page * 25)
+                search_url = _build_search_url(
+                    query=query,
+                    start=page * 25,
+                    max_post_age_days=max_age_days,
+                )
                 html = self._fetch_text(search_url, kind="search")
                 if not html:
                     continue
@@ -264,9 +268,13 @@ class LinkedInQueryBuilder:
         return _derive_queries(self._compass, self._limit)
 
     @staticmethod
-    def build_search_url(query: str, start: int) -> str:
-        """Serialize one live LinkedIn search URL."""
-        return _build_search_url(query=query, start=start)
+    def build_search_url(query: str, start: int, *, max_post_age_days: int | None = None) -> str:
+        """Serialize one live LinkedIn search URL.
+
+        Note: this is the correct place to apply tenure filtering (server-side),
+        not by mutating `post_datetime` when it is not extractable.
+        """
+        return _build_search_url(query=query, start=start, max_post_age_days=max_post_age_days)
 
 
 class LinkedInFilterPolicy:
@@ -447,12 +455,16 @@ def _derive_region(location_text: str) -> str | None:
     return LinkedInFilterEvaluator.derive_region(location_text)
 
 
-def _build_search_url(query: str, start: int) -> str:
+def _build_search_url(query: str, start: int, *, max_post_age_days: int | None = None) -> str:
     """Build the guest LinkedIn search URL for one query page."""
     params = {
         "keywords": query,
         "start": str(start),
     }
+    # LinkedIn supports a "time posted" filter using `f_TPR=r<seconds>`.
+    # We apply it at the search level when configured, without touching `post_datetime`.
+    if max_post_age_days is not None and max_post_age_days > 0:
+        params["f_TPR"] = f"r{max_post_age_days * 24 * 60 * 60}"
     return "https://www.linkedin.com/jobs/search/?" + urllib.parse.urlencode(params)
 
 

@@ -36,6 +36,19 @@ class CliTests(unittest.TestCase):
         self.assertEqual(9, result)
         run_harvest.assert_called_once_with(parser.parse_args.return_value)
 
+    def test_main_dispatches_indeed_ingest_command(self) -> None:
+        parser = Mock()
+        parser.parse_args.return_value = argparse.Namespace(command="ingest-indeed")
+
+        with (
+            patch("src.runtime_entrypoints.build_parser", return_value=parser),
+            patch("src.runtime_entrypoints._run_indeed_ingest", return_value=5) as run_ingest,
+        ):
+            result = cli.main()
+
+        self.assertEqual(5, result)
+        run_ingest.assert_called_once_with(parser.parse_args.return_value)
+
     def test_run_ingest_uses_fixture_adapter_when_source_file_is_provided(self) -> None:
         args = argparse.Namespace(
             compass_file="profiles/professional_compass.json",
@@ -49,7 +62,7 @@ class CliTests(unittest.TestCase):
         )
         repository = Mock()
         repository.count_jobs.return_value = 3
-        compass = object()
+        compass = SimpleNamespace(search_max_post_age_days=None)
         result = SimpleNamespace(fetched=2, stored=2, inserted=1, updated=1, evaluations=[])
 
         with (
@@ -91,7 +104,7 @@ class CliTests(unittest.TestCase):
         )
         repository = Mock()
         repository.count_jobs.return_value = 0
-        compass = object()
+        compass = SimpleNamespace(search_max_post_age_days=None)
         result = SimpleNamespace(fetched=0, stored=0, inserted=0, updated=0, evaluations=[])
 
         with (
@@ -127,7 +140,7 @@ class CliTests(unittest.TestCase):
         )
         repository = Mock()
         repository.count_jobs.return_value = 4
-        compass = object()
+        compass = SimpleNamespace(search_max_post_age_days=None)
         schedule = object()
         result = SimpleNamespace(as_dict=lambda: {"stored": 4})
 
@@ -166,6 +179,124 @@ class CliTests(unittest.TestCase):
         self.assertTrue(schedule_actions)
         self.assertIsInstance(Path("config/extraction_schedule.yaml"), Path)
 
+    def test_run_indeed_ingest_uses_fixture_adapter_when_source_file_is_provided(self) -> None:
+        args = argparse.Namespace(
+            compass_file="profiles/professional_compass.json",
+            source_file="sample_indeed_jobs.json",
+            max_jobs=30,
+            capture_dir=None,
+            write_fixture=None,
+            db_path="data/jobs.db",
+            limit=10,
+        )
+        repository = Mock()
+        repository.count_jobs.return_value = 3
+        compass = SimpleNamespace(search_max_post_age_days=None)
+        result = SimpleNamespace(fetched=2, stored=2, inserted=1, updated=1, evaluations=[])
+
+        with (
+            patch("src.runtime_entrypoints.SQLiteJobRepository", return_value=repository),
+            patch("src.runtime_entrypoints.load_professional_compass", return_value=compass),
+            patch("src.runtime_entrypoints.IndeedJsonFileAdapter", return_value="fixture-adapter") as json_adapter,
+            patch("src.runtime_entrypoints.IndeedScrapeAdapter") as scrape_adapter,
+            patch("src.runtime_entrypoints.JobCompassEvaluator", return_value="evaluator") as evaluator,
+            patch("src.runtime_entrypoints.JobIngestionService") as service_cls,
+            patch("builtins.print"),
+        ):
+            service = service_cls.return_value
+            service.ingest.return_value = result
+            exit_code = cli._run_indeed_ingest(args)
+
+        self.assertEqual(0, exit_code)
+        repository.initialize.assert_called_once_with()
+        json_adapter.assert_called_once_with("sample_indeed_jobs.json")
+        scrape_adapter.assert_not_called()
+        evaluator.assert_called_once_with(compass)
+        service_cls.assert_called_once_with(
+            adapter="fixture-adapter",
+            repository=repository,
+            evaluator="evaluator",
+        )
+        service.ingest.assert_called_once_with()
+
+    def test_run_indeed_ingest_uses_live_scrape_adapter_without_source_file(self) -> None:
+        args = argparse.Namespace(
+            compass_file="profiles/professional_compass.json",
+            source_file=None,
+            max_jobs=25,
+            capture_dir="data/captures",
+            write_fixture="data/fixture.json",
+            db_path="data/jobs.db",
+            limit=10,
+        )
+        repository = Mock()
+        repository.count_jobs.return_value = 0
+        compass = SimpleNamespace(search_max_post_age_days=None)
+        result = SimpleNamespace(fetched=0, stored=0, inserted=0, updated=0, evaluations=[])
+
+        with (
+            patch("src.runtime_entrypoints.SQLiteJobRepository", return_value=repository),
+            patch("src.runtime_entrypoints.load_professional_compass", return_value=compass),
+            patch("src.runtime_entrypoints.IndeedJsonFileAdapter") as json_adapter,
+            patch("src.runtime_entrypoints.IndeedScrapeAdapter", return_value="scrape-adapter") as scrape_adapter,
+            patch("src.runtime_entrypoints.JobCompassEvaluator", return_value="evaluator"),
+            patch("src.runtime_entrypoints.JobIngestionService") as service_cls,
+            patch("builtins.print"),
+        ):
+            service_cls.return_value.ingest.return_value = result
+            exit_code = cli._run_indeed_ingest(args)
+
+        self.assertEqual(0, exit_code)
+        json_adapter.assert_not_called()
+        scrape_adapter.assert_called_once_with(
+            compass=compass,
+            max_jobs=25,
+            capture_dir="data/captures",
+            write_fixture_path="data/fixture.json",
+        )
+
+    def test_run_indeed_ingest_reports_inserted_and_updated_counts(self) -> None:
+        args = argparse.Namespace(
+            compass_file="profiles/professional_compass.json",
+            source_file="sample_indeed_jobs.json",
+            max_jobs=30,
+            capture_dir=None,
+            write_fixture=None,
+            db_path="data/jobs.db",
+            limit=1,
+        )
+        repository = Mock()
+        repository.count_jobs.return_value = 12
+        compass = SimpleNamespace(search_max_post_age_days=None)
+        evaluator = Mock()
+        evaluator.as_dict.return_value = {"company": "Example"}
+        result = SimpleNamespace(
+            fetched=2,
+            stored=2,
+            inserted=2,
+            updated=0,
+            evaluations=[object()],
+        )
+
+        with (
+            patch("src.runtime_entrypoints.SQLiteJobRepository", return_value=repository),
+            patch("src.runtime_entrypoints.load_professional_compass", return_value=compass),
+            patch("src.runtime_entrypoints.IndeedJsonFileAdapter", return_value="fixture-adapter"),
+            patch("src.runtime_entrypoints.JobCompassEvaluator", return_value=evaluator),
+            patch("src.runtime_entrypoints.JobIngestionService") as service_cls,
+            patch("builtins.print") as print_mock,
+        ):
+            service_cls.return_value.ingest.return_value = result
+            exit_code = cli._run_indeed_ingest(args)
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual(
+            "Loaded compass from profiles/professional_compass.json. "
+            "Persisted 2 Indeed jobs into data/jobs.db (new: 2, updated: 0). "
+            "Stored records: 12.",
+            print_mock.call_args_list[0].args[0],
+        )
+
     def test_run_ingest_reports_inserted_and_updated_counts(self) -> None:
         args = argparse.Namespace(
             compass_file="profiles/professional_compass.json",
@@ -179,7 +310,7 @@ class CliTests(unittest.TestCase):
         )
         repository = Mock()
         repository.count_jobs.return_value = 1728
-        compass = object()
+        compass = SimpleNamespace(search_max_post_age_days=None)
         evaluator = Mock()
         evaluator.as_dict.return_value = {"company": "Synchro"}
         result = SimpleNamespace(
