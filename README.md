@@ -22,7 +22,7 @@ The repository is a working local-first prototype.
 
 It can:
 - load a professional compass (your local job-search intent and constraints)
-- ingest LinkedIn jobs via either a fixture-backed adapter or live acquisition (scraping)
+- ingest LinkedIn or Indeed jobs via either a fixture-backed adapter or live acquisition (scraping)
 - store canonical jobs in SQLite with additive schema evolution
 - score each stored job via a lightweight rule-based evaluator for human review
 
@@ -62,6 +62,7 @@ The current runtime dependencies are defined in `requirements.txt`:
 
 - `certifi`
 - `PyYAML`
+- `selenium`
 
 If you plan to use OpenSpec on this machine, Node 20 must also be in `PATH`:
 
@@ -104,6 +105,7 @@ The current implementation includes:
 - a CLI workflow to ingest and score stored jobs locally
 
 This keeps LinkedIn ingestion isolated from any browser automation, scraping stack, or official API dependency while still making the ingestion boundary testable.
+The same canonical ingestion flow is now also used for Indeed.
 
 ## Refactor Target
 
@@ -169,6 +171,46 @@ python3.11 main.py ingest-linkedin \
   --write-fixture data/live_linkedin_fixture.json \
   --capture-dir data/linkedin_captures
 ```
+
+Indeed fixture mode (offline):
+
+```bash
+python3.11 main.py ingest-indeed \
+  --compass-file profiles/professional_compass.json \
+  --source-file sample_indeed_jobs.json \
+  --db-path data/jobs.db \
+  --limit 10
+```
+
+Indeed live mode (scraping):
+
+```bash
+python3.11 main.py ingest-indeed \
+  --compass-file profiles/professional_compass.json \
+  --db-path data/jobs.db \
+  --limit 10 \
+  --max-jobs 25 \
+  --write-fixture data/live_indeed_fixture.json \
+  --capture-dir data/indeed_captures
+```
+
+Live Indeed scraping is browser-backed. The default runtime uses Chrome through
+Selenium Manager on this machine. If you prefer Safari instead, enable Safari
+remote automation first:
+
+```bash
+safaridriver --enable
+```
+
+Optional environment variables for live Indeed scraping:
+
+- `INDEED_BROWSER=safari|chrome|firefox`
+- `INDEED_BROWSER_WAIT_SECONDS=15`
+- `INDEED_COOKIES="name=value; other=value"` when you need to preload a browser session
+
+Live Indeed search-card rows are only persisted when the scraper can derive a
+real href-backed `jk` value and normalize it into a canonical
+`https://www.indeed.com/viewjob?jk=...` URL.
 
 Optional flags:
 
@@ -262,6 +304,7 @@ Pass a custom path with `--extraction-spec`.
 
 - `LINKEDIN_COOKIES`: attach LinkedIn session cookies for authenticated scraping (local-only)
 - `LINKEDIN_CSRF`: attach a CSRF token header when needed (local-only)
+- `INDEED_COOKIES`: attach Indeed session cookies for local authenticated scraping when needed
 - `LOCAL_LLM_BASE_URL`: local LLM endpoint used only for fallback extraction when deterministic parsing fails
 
 Do not commit credentials to the repo.

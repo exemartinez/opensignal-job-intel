@@ -12,6 +12,12 @@ class ModelTests(unittest.TestCase):
             normalize_source_link(" https://www.linkedin.com/jobs/view/123/?tracking=abc "),
         )
 
+    def test_normalize_source_link_keeps_indeed_jk_parameter(self) -> None:
+        self.assertEqual(
+            "https://www.indeed.com/viewjob?jk=abc123",
+            normalize_source_link("https://www.indeed.com/viewjob?jk=abc123&from=shareddesktop"),
+        )
+
     def test_job_record_normalized_trims_optional_text_fields(self) -> None:
         job = JobRecord(
             source=JobSource.LINKEDIN,

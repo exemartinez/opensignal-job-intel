@@ -5,6 +5,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Indeed ingestion support through the shared `JobSourceAdapter` flow, including fixture-backed and live acquisition modes, deterministic extraction, source-local diagnostics, and canonical SQLite persistence/reporting.
+
+### Changed
+- Live Indeed acquisition now uses Selenium-backed browser automation rather than raw HTTP requests because Indeed search pages are challenge-protected, with Chrome as the default live browser path on this machine.
+- Live Indeed search-card persistence now rejects placeholder or mismatched card ids and stores only canonical href-backed `viewjob` URLs derived from verified `jk` values.
+
 ## - 2026-05-09
 
 ### Changed

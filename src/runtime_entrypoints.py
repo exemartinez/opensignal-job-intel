@@ -23,6 +23,7 @@ from src.harvest_orchestration import (
     load_harvest_schedule,
     resolve_harvest_schedule_path,
 )
+from src.indeed_acquisition import IndeedJsonFileAdapter, IndeedScrapeAdapter
 from src.linkedin_acquisition import LinkedInJsonFileAdapter, LinkedInScrapeAdapter
 from src.persistence_runtime_ops import HarvestCronScripts, SQLiteJobRepository
 
@@ -54,6 +55,18 @@ class RuntimeEntrypoints:
         ingest.add_argument("--write-fixture", default=None)
         ingest.add_argument("--db-path", default="data/jobs.db")
         ingest.add_argument("--limit", type=int, default=10)
+
+        indeed = subparsers.add_parser(
+            "ingest-indeed",
+            help="Ingest Indeed jobs (fixture mode or live acquisition) into SQLite and score them.",
+        )
+        indeed.add_argument("--compass-file", default="profiles/professional_compass.json")
+        indeed.add_argument("--source-file")
+        indeed.add_argument("--max-jobs", type=int, default=30)
+        indeed.add_argument("--capture-dir", default=None)
+        indeed.add_argument("--write-fixture", default=None)
+        indeed.add_argument("--db-path", default="data/jobs.db")
+        indeed.add_argument("--limit", type=int, default=10)
 
         harvest = subparsers.add_parser(
             "harvest-linkedin",
@@ -88,6 +101,8 @@ class RuntimeEntrypoints:
         args = build_parser().parse_args(argv)
         if args.command == "ingest-linkedin":
             return _run_ingest(args)
+        if args.command == "ingest-indeed":
+            return _run_indeed_ingest(args)
         if args.command == "harvest-linkedin":
             return _run_harvest(args)
         return RuntimeEntrypoints.run_runtime_command(args)
@@ -95,29 +110,62 @@ class RuntimeEntrypoints:
     @staticmethod
     def run_ingest(args: argparse.Namespace) -> int:
         """Run fixture or live LinkedIn ingestion and print the summary."""
-        repository = SQLiteJobRepository(Path(args.db_path))
-        repository.initialize()
-        compass = load_professional_compass(args.compass_file)
-
-        if args.source_file:
-            adapter = LinkedInJsonFileAdapter(args.source_file)
-        else:
-            adapter = LinkedInScrapeAdapter(
+        return RuntimeEntrypoints._run_source_ingest(
+            args=args,
+            source_label="LinkedIn",
+            fixture_adapter_cls=LinkedInJsonFileAdapter,
+            live_adapter_factory=lambda compass: LinkedInScrapeAdapter(
                 compass=compass,
                 extraction_spec_path=args.extraction_spec,
                 max_jobs=args.max_jobs,
                 capture_dir=args.capture_dir,
                 write_fixture_path=args.write_fixture,
-            )
+            ),
+        )
+
+    @staticmethod
+    def run_indeed_ingest(args: argparse.Namespace) -> int:
+        """Run fixture or live Indeed ingestion and print the summary."""
+        return RuntimeEntrypoints._run_source_ingest(
+            args=args,
+            source_label="Indeed",
+            fixture_adapter_cls=IndeedJsonFileAdapter,
+            live_adapter_factory=lambda compass: IndeedScrapeAdapter(
+                compass=compass,
+                max_jobs=args.max_jobs,
+                capture_dir=args.capture_dir,
+                write_fixture_path=args.write_fixture,
+            ),
+        )
+
+    @staticmethod
+    def _run_source_ingest(
+        *,
+        args: argparse.Namespace,
+        source_label: str,
+        fixture_adapter_cls,
+        live_adapter_factory,
+    ) -> int:
+        """Run one source-specific ingestion flow through the shared service."""
+        repository = SQLiteJobRepository(Path(args.db_path))
+        repository.initialize()
+        compass = load_professional_compass(args.compass_file)
+
+        if args.source_file:
+            adapter = fixture_adapter_cls(args.source_file)
+        else:
+            adapter = live_adapter_factory(compass)
         evaluator = JobCompassEvaluator(compass)
         service = JobIngestionService(
-            adapter=adapter, repository=repository, evaluator=evaluator
+            adapter=adapter,
+            repository=repository,
+            evaluator=evaluator,
         )
         result = service.ingest()
 
         print(
             f"Loaded compass from {args.compass_file}. "
-            f"Persisted {result.stored} LinkedIn jobs into {args.db_path} "
+            f"Persisted {result.stored} {source_label} jobs into {args.db_path} "
             f"(new: {result.inserted}, updated: {result.updated}). "
             f"Stored records: {repository.count_jobs()}."
         )
@@ -199,6 +247,11 @@ def _run_ingest(args: argparse.Namespace) -> int:
     return RuntimeEntrypoints.run_ingest(args)
 
 
+def _run_indeed_ingest(args: argparse.Namespace) -> int:
+    """Expose Indeed ingest execution at module scope for patch-friendly tests."""
+    return RuntimeEntrypoints.run_indeed_ingest(args)
+
+
 def _run_harvest(args: argparse.Namespace) -> int:
     """Expose harvest execution at module scope for patch-friendly tests."""
     return RuntimeEntrypoints.run_harvest(args)
@@ -208,4 +261,11 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 
-__all__ = ["RuntimeEntrypoints", "build_parser", "main", "_run_ingest", "_run_harvest"]
+__all__ = [
+    "RuntimeEntrypoints",
+    "build_parser",
+    "main",
+    "_run_ingest",
+    "_run_indeed_ingest",
+    "_run_harvest",
+]
