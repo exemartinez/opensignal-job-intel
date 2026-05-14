@@ -438,6 +438,10 @@ def extract_job_from_detail_html(
         # relative age signal. (Persistence layer also infers, but doing it here
         # keeps the in-memory record self-consistent for filtering.)
         post_datetime = collected_at - timedelta(days=post_age_days)
+    if post_age_days is None and post_datetime is not None:
+        # Keep age fields consistent when we have a real post datetime but no
+        # explicit relative-age text. This supports compass filtering.
+        post_age_days = max(0, (collected_at.date() - post_datetime.date()).days)
 
     title = title.strip()
     company = company.strip()

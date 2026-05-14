@@ -15,6 +15,8 @@
 - [x] 3.3 Implement job detail fetch and deterministic extraction into canonical fields (company/title/description/link/external_job_id when available)
 - [x] 3.4 Ensure `post_datetime` remains unset unless Wellfound provides a trustworthy timestamp
 - [x] 3.5 Ensure compass filters are applied best-effort without fabricating missing fields
+- [x] 3.6 Add human-like throttling (jitter/scroll) and early-stop block detection for restriction pages
+- [x] 3.7 Derive `post_age_days` from `post_datetime` when the relative-age label is missing
 
 ## 4. Tests
 

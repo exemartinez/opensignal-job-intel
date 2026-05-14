@@ -31,3 +31,10 @@ The system SHALL NOT fabricate `post_datetime` for Wellfound postings when Wellf
 - **THEN** the canonical record stores `post_datetime` as null
 - **AND** the system does not substitute `collected_at` as a posting time
 
+### Requirement: Wellfound age fields remain consistent when possible
+When the Wellfound adapter can determine a posting datetime, it SHALL also derive an approximate `post_age_days` when an explicit age label is not present.
+
+#### Scenario: post_age_days is derived from post_datetime
+- **WHEN** a Wellfound posting includes a `post_datetime`
+- **AND** the page does not include an explicit `post_age_text` signal
+- **THEN** the system computes `post_age_days` as the day-level difference between `collected_at` and `post_datetime`

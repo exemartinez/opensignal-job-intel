@@ -243,6 +243,30 @@ Optional environment variables for live Wellfound scraping:
 - `WELLFOUND_BROWSER_WAIT_SECONDS=15`
 - `WELLFOUND_COOKIES="name=value; other=value"` when you need to preload a browser session
 
+If you hit a restriction page ("Access is temporarily restricted"):
+
+1. Stop scraping for a while (repeated runs usually extend the cooldown).
+2. Run headful Chrome with a persistent profile directory so any challenge
+   cookies/session state can persist across runs:
+
+```bash
+export WELLFOUND_HEADLESS=0
+export WELLFOUND_BROWSER=chrome
+export WELLFOUND_CHROME_PROFILE_DIR="$PWD/data/wellfound_chrome_profile"
+export WELLFOUND_BROWSER_WAIT_SECONDS=45
+```
+
+Then retry ingestion with a small `--max-jobs` value:
+
+```bash
+python3.11 main.py ingest-wellfound \
+  --compass-file profiles/professional_compass.json \
+  --db-path data/jobs.db \
+  --max-jobs 5 \
+  --limit 3 \
+  --capture-dir data/wellfound_captures
+```
+
 Optional flags:
 
 - `--db-path data/jobs.db` to choose the SQLite file location
