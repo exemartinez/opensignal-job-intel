@@ -93,3 +93,17 @@ class WellfoundAdapterTests(unittest.TestCase):
             "https://wellfound.com/jobs/4209714-client-success-specialist",
             normalize_source_link(link),
         )
+
+
+class WellfoundBlockDetectionTests(unittest.TestCase):
+    def test_detects_hard_block_page(self) -> None:
+        from src.wellfound_acquisition import _looks_hard_blocked
+
+        html = """
+        <html><body>
+        <h1>Access is temporarily restricted</h1>
+        We detected unusual activity from your device or network.
+        Need help? Submit feedback.
+        </body></html>
+        """
+        self.assertTrue(_looks_hard_blocked(html))

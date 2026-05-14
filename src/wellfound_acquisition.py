@@ -12,6 +12,7 @@ import html
 import json
 import os
 import re
+import random
 import ssl
 import time
 import urllib.error
@@ -24,7 +25,7 @@ from typing import Any
 from datetime import timedelta
 
 from selenium import webdriver
-from selenium.common.exceptions import WebDriverException
+from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -49,6 +50,7 @@ class WellfoundAcquisitionDiagnostics:
     dropped: int = 0
     drops: list[str] = field(default_factory=list)
     extraction_mode_counts: dict[str, int] = field(default_factory=dict)
+    blocked: bool = False
 
     def record_extraction_mode(self, mode: str) -> None:
         """Increment the counter for the extraction path that succeeded."""
@@ -64,6 +66,7 @@ class WellfoundAcquisitionDiagnostics:
             "dropped": self.dropped,
             "drops": list(self.drops),
             "extraction_mode_counts": dict(self.extraction_mode_counts),
+            "blocked": self.blocked,
         }
 
 
@@ -93,7 +96,7 @@ class WellfoundScrapeAdapter(JobSourceAdapter):
         # Browser-backed live acquisition (Wellfound is frequently protected).
         self._cookies = os.environ.get("WELLFOUND_COOKIES")
         self._browser_name = os.environ.get("WELLFOUND_BROWSER", "chrome")
-        self._wait_seconds = float(os.environ.get("WELLFOUND_BROWSER_WAIT_SECONDS", "15"))
+        self._wait_seconds = float(os.environ.get("WELLFOUND_BROWSER_WAIT_SECONDS", "25"))
 
         self.diagnostics = WellfoundAcquisitionDiagnostics()
 
@@ -116,6 +119,11 @@ class WellfoundScrapeAdapter(JobSourceAdapter):
                         html_text = self._fetch_text(search_url, kind="search", session=session)
                         if not html_text:
                             continue
+                        if _looks_hard_blocked(html_text):
+                            self.diagnostics.blocked = True
+                            self.diagnostics.dropped += 1
+                            self.diagnostics.drops.append("blocked:search")
+                            return jobs
                         self.diagnostics.search_pages += 1
                         job_links.extend(extract_job_links_from_search_html(html_text))
                         if len(set(job_links)) >= self._max_jobs:
@@ -130,6 +138,11 @@ class WellfoundScrapeAdapter(JobSourceAdapter):
                         self.diagnostics.dropped += 1
                         self.diagnostics.drops.append(f"missing_detail_html:{link}")
                         continue
+                    if _looks_hard_blocked(html_text):
+                        self.diagnostics.blocked = True
+                        self.diagnostics.dropped += 1
+                        self.diagnostics.drops.append("blocked:job")
+                        return jobs
                     self.diagnostics.job_detail_pages += 1
 
                     job = extract_job_from_detail_html(
@@ -236,15 +249,27 @@ class WellfoundBrowserSession:
         self.close()
 
     def fetch_text(self, url: str, kind: str) -> str:
-        """Navigate to a URL and return the rendered HTML."""
+        """Navigate to a URL and return the rendered HTML.
+
+        This method intentionally includes "human-like" behavior (jitter,
+        scrolling, and content-ready waits) to reduce Wellfound throttling.
+        """
         driver = self._require_driver()
+        self._human_pause(0.6, 1.8)
         driver.get(url)
-        WebDriverWait(driver, self._wait_seconds).until(
-            lambda current: bool(current.find_elements(By.TAG_NAME, "body"))
-        )
-        if self._request_delay_seconds > 0:
-            time.sleep(self._request_delay_seconds)
-        return driver.page_source
+        self._wait_ready(driver, kind=kind)
+        self._simulate_human(driver, kind=kind)
+        self._human_pause(0.4, 1.4)
+        html_text = driver.page_source
+        if _looks_blocked(html_text):
+            # Backoff and one retry to avoid hammering when challenged.
+            self._human_pause(4.0, 9.0)
+            driver.get(url)
+            self._wait_ready(driver, kind=kind)
+            self._simulate_human(driver, kind=kind)
+            self._human_pause(0.8, 2.5)
+            html_text = driver.page_source
+        return html_text
 
     def close(self) -> None:
         """Quit the active Selenium driver when present."""
@@ -259,8 +284,14 @@ class WellfoundBrowserSession:
             return webdriver.Safari()
         if browser == "chrome":
             options = webdriver.ChromeOptions()
+            headless_flag = os.environ.get("WELLFOUND_HEADLESS", "0").strip().lower()
+            if headless_flag in {"1", "true", "yes"}:
+                options.add_argument("--headless=new")
             options.add_argument("--disable-blink-features=AutomationControlled")
             options.add_argument("--window-size=1440,1200")
+            profile_dir = os.environ.get("WELLFOUND_CHROME_PROFILE_DIR")
+            if profile_dir:
+                options.add_argument(f"--user-data-dir={profile_dir}")
             options.add_argument(
                 "--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
@@ -278,12 +309,53 @@ class WellfoundBrowserSession:
         WebDriverWait(driver, self._wait_seconds).until(
             lambda current: current.execute_script("return document.readyState") == "complete"
         )
+        self._simulate_human(driver, kind="prime")
         for cookie in _parse_cookie_header(self._cookie_header):
             try:
                 driver.add_cookie(cookie)
             except WebDriverException:
                 continue
         self._cookies_loaded = True
+
+    def _human_pause(self, min_seconds: float, max_seconds: float) -> None:
+        """Sleep for a small random interval to mimic human think time."""
+        delay = random.uniform(min_seconds, max_seconds)
+        time.sleep(delay)
+        if self._request_delay_seconds > 0:
+            time.sleep(self._request_delay_seconds)
+
+    def _wait_ready(self, driver, *, kind: str) -> None:
+        """Wait until the page is ready and key content is present."""
+        WebDriverWait(driver, self._wait_seconds).until(
+            lambda current: current.execute_script("return document.readyState") == "complete"
+        )
+        WebDriverWait(driver, self._wait_seconds).until(
+            lambda current: bool(current.find_elements(By.TAG_NAME, "body"))
+        )
+        if kind == "job":
+            try:
+                WebDriverWait(driver, min(10.0, self._wait_seconds)).until(
+                    lambda current: bool(current.find_elements(By.TAG_NAME, "h1"))
+                )
+            except TimeoutException:
+                return
+
+    def _simulate_human(self, driver, *, kind: str) -> None:
+        """Perform minimal scrolling/mouse movement to reduce bot detection."""
+        try:
+            driver.execute_script("window.scrollTo(0, 0);")
+            self._human_pause(0.2, 0.7)
+            # Small incremental scrolls.
+            for _ in range(3 if kind == "job" else 2):
+                delta = random.randint(180, 520)
+                driver.execute_script("window.scrollBy(0, arguments[0]);", delta)
+                self._human_pause(0.3, 0.9)
+            # A little mouse move event (pure JS).
+            driver.execute_script(
+                "document.dispatchEvent(new MouseEvent('mousemove', {clientX: 120, clientY: 180}));"
+            )
+        except Exception:
+            return
 
     def _require_driver(self):
         """Return the live driver or fail if the session is not open."""
@@ -654,6 +726,37 @@ def _ssl_context() -> ssl.SSLContext:
         return ssl.create_default_context(cafile=certifi.where())
     except Exception:
         return ssl.create_default_context()
+
+
+def _looks_blocked(html_text: str) -> bool:
+    """Return whether the fetched HTML likely represents a bot challenge/block."""
+    lowered = html_text.lower()
+    for needle in (
+        "verify you are human",
+        "are you human",
+        "access is temporarily restricted",
+        "we detected unusual activity",
+        "access denied",
+        "request blocked",
+        "cloudflare",
+        "captcha",
+    ):
+        if needle in lowered:
+            return True
+    return False
+
+
+def _looks_hard_blocked(html_text: str) -> bool:
+    """Return whether the page indicates a hard block where we must stop early."""
+    lowered = html_text.lower()
+    for needle in (
+        "access is temporarily restricted",
+        "we detected unusual activity",
+        "need help? submit feedback",
+    ):
+        if needle in lowered:
+            return True
+    return False
 
 
 def _browser_user_agent() -> str:
