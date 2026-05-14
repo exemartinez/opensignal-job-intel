@@ -26,6 +26,8 @@ sources:
     # behavior is reproducible.
     browser: chrome          # chrome|safari|firefox
     headless: false
-    chrome_profile_dir: data/wellfound_chrome_profile
+    # Prefer an absolute path for Chrome user-data-dir so the browser can
+    # reliably persist session state between runs.
+    chrome_profile_dir: /Users/hernanezequielmartinez/Documents/workspace/opensignal-job-intel/data/wellfound_chrome_profile
     wait_seconds: 45
     cookies: null            # optional raw Cookie header string

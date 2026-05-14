@@ -29,6 +29,7 @@ sources:
     # Live scraping configuration for Wellfound.
     browser: chrome          # chrome|safari|firefox
     headless: false
+    # Prefer an absolute path in your local override file when possible.
     chrome_profile_dir: data/wellfound_chrome_profile
     wait_seconds: 45
     cookies: null            # optional raw Cookie header string

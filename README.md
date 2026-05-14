@@ -247,7 +247,8 @@ sources:
   wellfound:
     browser: chrome
     headless: false
-    chrome_profile_dir: data/wellfound_chrome_profile
+    # Prefer an absolute path for Chrome profile persistence when possible.
+    chrome_profile_dir: /abs/path/to/data/wellfound_chrome_profile
     wait_seconds: 45
     cookies: null
 ```
