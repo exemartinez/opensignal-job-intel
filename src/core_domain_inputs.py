@@ -20,6 +20,7 @@ class JobSource(StrEnum):
 
     LINKEDIN = "linkedin"
     INDEED = "indeed"
+    WELLFOUND = "wellfound"
 
 
 class Clock:
@@ -43,6 +44,8 @@ class SourceLinkNormalizer:
             params = dict(parse_qsl(parts.query, keep_blank_values=False))
             if "jk" in params:
                 query = urlencode({"jk": params["jk"]})
+        # Wellfound job pages are stable by path (e.g. /jobs/<id>-<slug>).
+        # Strip query/fragment noise so the dedupe key stays stable.
         return urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/"), query, ""))
 
 

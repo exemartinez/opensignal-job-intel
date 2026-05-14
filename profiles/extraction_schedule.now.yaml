@@ -18,3 +18,16 @@ progress:
   summary_every_requests: 10
 logging:
   file_path: data/harvest-linkedin.now.log
+
+sources:
+  wellfound:
+    # Live scraping configuration for Wellfound.
+    # Note: this is intentionally a config file setting (not env vars) so the
+    # behavior is reproducible.
+    browser: chrome          # chrome|safari|firefox
+    headless: false
+    # Prefer an absolute path for Chrome user-data-dir so the browser can
+    # reliably persist session state between runs.
+    chrome_profile_dir: /Users/hernanezequielmartinez/Documents/workspace/opensignal-job-intel/data/wellfound_chrome_profile
+    wait_seconds: 45
+    cookies: null            # optional raw Cookie header string
