@@ -78,6 +78,11 @@ class RuntimeEntrypoints:
         wellfound.add_argument("--max-jobs", type=int, default=30)
         wellfound.add_argument("--capture-dir", default=None)
         wellfound.add_argument("--write-fixture", default=None)
+        wellfound.add_argument(
+            "--schedule-file",
+            default=None,
+            help="YAML schedule/config file (defaults to profiles/extraction_schedule.now.yaml when present).",
+        )
         wellfound.add_argument("--db-path", default="data/jobs.db")
         wellfound.add_argument("--limit", type=int, default=10)
 
@@ -165,6 +170,7 @@ class RuntimeEntrypoints:
                 max_jobs=args.max_jobs,
                 capture_dir=args.capture_dir,
                 write_fixture_path=args.write_fixture,
+                schedule_path=args.schedule_file,
             ),
         )
     @staticmethod

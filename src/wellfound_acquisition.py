@@ -37,6 +37,66 @@ from src.core_domain_inputs import (
     utc_now,
 )
 from src.linkedin_extraction_filtering import LinkedInFilterEvaluator
+import yaml
+
+
+@dataclass(slots=True)
+class WellfoundSettings:
+    """Hold runtime settings for Wellfound acquisition loaded from YAML."""
+
+    browser: str = "chrome"
+    headless: bool = False
+    chrome_profile_dir: str | None = "data/wellfound_chrome_profile"
+    wait_seconds: float = 45.0
+    cookies: str | None = None
+
+
+def load_wellfound_settings(schedule_path: str | None) -> WellfoundSettings:
+    """Load Wellfound runtime settings from the schedule/config YAML.
+
+    Precedence:
+    1. explicit schedule_path argument
+    2. profiles/extraction_schedule.now.yaml (when present)
+    3. config/extraction_schedule.yaml
+    4. config/extraction_schedule.template.yaml
+    """
+    candidates: list[Path] = []
+    if schedule_path:
+        candidates.append(Path(schedule_path))
+    candidates.append(Path("profiles/extraction_schedule.now.yaml"))
+    candidates.append(Path("config/extraction_schedule.yaml"))
+    candidates.append(Path("config/extraction_schedule.template.yaml"))
+
+    data: dict[str, Any] = {}
+    for path in candidates:
+        if path.exists():
+            try:
+                data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+                break
+            except Exception:
+                data = {}
+                continue
+
+    sources = data.get("sources") or {}
+    wellfound = sources.get("wellfound") or {}
+    settings = WellfoundSettings()
+    if isinstance(wellfound, dict):
+        browser = wellfound.get("browser")
+        if isinstance(browser, str) and browser.strip():
+            settings.browser = browser.strip()
+        headless = wellfound.get("headless")
+        if isinstance(headless, bool):
+            settings.headless = headless
+        profile_dir = wellfound.get("chrome_profile_dir")
+        if isinstance(profile_dir, str) and profile_dir.strip():
+            settings.chrome_profile_dir = profile_dir.strip()
+        wait_seconds = wellfound.get("wait_seconds")
+        if isinstance(wait_seconds, (int, float)) and float(wait_seconds) > 0:
+            settings.wait_seconds = float(wait_seconds)
+        cookies = wellfound.get("cookies")
+        if isinstance(cookies, str) and cookies.strip():
+            settings.cookies = cookies.strip()
+    return settings
 
 
 @dataclass(slots=True)
@@ -83,6 +143,7 @@ class WellfoundScrapeAdapter(JobSourceAdapter):
         request_delay_seconds: float = 1.0,
         capture_dir: str | None = None,
         write_fixture_path: str | None = None,
+        schedule_path: str | None = None,
     ) -> None:
         """Bind compass, pacing, and optional capture/fixture destinations."""
         self._compass = compass
@@ -94,9 +155,12 @@ class WellfoundScrapeAdapter(JobSourceAdapter):
         self._write_fixture_path = Path(write_fixture_path) if write_fixture_path else None
 
         # Browser-backed live acquisition (Wellfound is frequently protected).
-        self._cookies = os.environ.get("WELLFOUND_COOKIES")
-        self._browser_name = os.environ.get("WELLFOUND_BROWSER", "chrome")
-        self._wait_seconds = float(os.environ.get("WELLFOUND_BROWSER_WAIT_SECONDS", "25"))
+        settings = load_wellfound_settings(schedule_path)
+        self._cookies = settings.cookies
+        self._browser_name = settings.browser
+        self._wait_seconds = settings.wait_seconds
+        self._headless = settings.headless
+        self._chrome_profile_dir = settings.chrome_profile_dir
 
         self.diagnostics = WellfoundAcquisitionDiagnostics()
 
@@ -193,6 +257,8 @@ class WellfoundScrapeAdapter(JobSourceAdapter):
             request_delay_seconds=self._request_delay_seconds,
             wait_seconds=self._wait_seconds,
             cookie_header=self._cookies,
+            headless=self._headless,
+            chrome_profile_dir=self._chrome_profile_dir,
         )
 
     def _fetch_text(
@@ -228,12 +294,16 @@ class WellfoundBrowserSession:
         request_delay_seconds: float,
         wait_seconds: float,
         cookie_header: str | None,
+        headless: bool,
+        chrome_profile_dir: str | None,
     ) -> None:
         """Bind browser choice, pacing, and optional cookie preload."""
         self._browser_name = browser_name
         self._request_delay_seconds = request_delay_seconds
         self._wait_seconds = wait_seconds
         self._cookie_header = cookie_header
+        self._headless = headless
+        self._chrome_profile_dir = chrome_profile_dir
         self._driver = None
         self._cookies_loaded = False
 
@@ -284,14 +354,12 @@ class WellfoundBrowserSession:
             return webdriver.Safari()
         if browser == "chrome":
             options = webdriver.ChromeOptions()
-            headless_flag = os.environ.get("WELLFOUND_HEADLESS", "0").strip().lower()
-            if headless_flag in {"1", "true", "yes"}:
+            if self._headless:
                 options.add_argument("--headless=new")
             options.add_argument("--disable-blink-features=AutomationControlled")
             options.add_argument("--window-size=1440,1200")
-            profile_dir = os.environ.get("WELLFOUND_CHROME_PROFILE_DIR")
-            if profile_dir:
-                options.add_argument(f"--user-data-dir={profile_dir}")
+            if self._chrome_profile_dir:
+                options.add_argument(f"--user-data-dir={self._chrome_profile_dir}")
             options.add_argument(
                 "--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"

@@ -275,6 +275,7 @@ class CliTests(unittest.TestCase):
             max_jobs=30,
             capture_dir=None,
             write_fixture=None,
+            schedule_file=None,
             db_path="data/jobs.db",
             limit=10,
         )
@@ -315,6 +316,7 @@ class CliTests(unittest.TestCase):
             max_jobs=25,
             capture_dir="data/captures",
             write_fixture="data/fixture.json",
+            schedule_file=None,
             db_path="data/jobs.db",
             limit=10,
         )
@@ -342,6 +344,7 @@ class CliTests(unittest.TestCase):
             max_jobs=25,
             capture_dir="data/captures",
             write_fixture_path="data/fixture.json",
+            schedule_path=None,
         )
 
     def test_run_indeed_ingest_reports_inserted_and_updated_counts(self) -> None:

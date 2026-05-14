@@ -237,24 +237,30 @@ python3.11 main.py ingest-wellfound \
 Live Wellfound scraping is browser-backed (Selenium) to avoid guest-page 403
 blocks on job detail pages.
 
-Optional environment variables for live Wellfound scraping:
+Wellfound live scraping configuration is loaded from the schedule/config YAML
+(default: `profiles/extraction_schedule.now.yaml`) under `sources.wellfound`.
 
-- `WELLFOUND_BROWSER=safari|chrome|firefox`
-- `WELLFOUND_BROWSER_WAIT_SECONDS=15`
-- `WELLFOUND_COOKIES="name=value; other=value"` when you need to preload a browser session
+Example:
+
+```yaml
+sources:
+  wellfound:
+    browser: chrome
+    headless: false
+    chrome_profile_dir: data/wellfound_chrome_profile
+    wait_seconds: 45
+    cookies: null
+```
+
+You can override the path explicitly with `--schedule-file <path>` on
+`ingest-wellfound`.
 
 If you hit a restriction page ("Access is temporarily restricted"):
 
 1. Stop scraping for a while (repeated runs usually extend the cooldown).
-2. Run headful Chrome with a persistent profile directory so any challenge
-   cookies/session state can persist across runs:
-
-```bash
-export WELLFOUND_HEADLESS=0
-export WELLFOUND_BROWSER=chrome
-export WELLFOUND_CHROME_PROFILE_DIR="$PWD/data/wellfound_chrome_profile"
-export WELLFOUND_BROWSER_WAIT_SECONDS=45
-```
+2. Set `sources.wellfound.headless: false` and a persistent
+   `sources.wellfound.chrome_profile_dir` in `profiles/extraction_schedule.now.yaml`
+   so any challenge cookies/session state can persist across runs.
 
 Then retry ingestion with a small `--max-jobs` value:
 
