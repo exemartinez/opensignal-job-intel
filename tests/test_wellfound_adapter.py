@@ -107,3 +107,12 @@ class WellfoundBlockDetectionTests(unittest.TestCase):
         </body></html>
         """
         self.assertTrue(_looks_hard_blocked(html))
+
+    def test_detects_datadome_block_page(self) -> None:
+        from src.wellfound_acquisition import _looks_hard_blocked
+
+        html = """
+        <html lang="en"><head><title>wellfound.com</title></head>
+        <body><script data-cfasync="false">var dd={'rt':'c','t':'bv'};</script></body></html>
+        """
+        self.assertTrue(_looks_hard_blocked(html))

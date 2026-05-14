@@ -119,7 +119,7 @@ class WellfoundScrapeAdapter(JobSourceAdapter):
                         html_text = self._fetch_text(search_url, kind="search", session=session)
                         if not html_text:
                             continue
-                        if _looks_hard_blocked(html_text):
+                        if _looks_hard_blocked(html_text) or _looks_blocked(html_text):
                             self.diagnostics.blocked = True
                             self.diagnostics.dropped += 1
                             self.diagnostics.drops.append("blocked:search")
@@ -138,7 +138,7 @@ class WellfoundScrapeAdapter(JobSourceAdapter):
                         self.diagnostics.dropped += 1
                         self.diagnostics.drops.append(f"missing_detail_html:{link}")
                         continue
-                    if _looks_hard_blocked(html_text):
+                    if _looks_hard_blocked(html_text) or _looks_blocked(html_text):
                         self.diagnostics.blocked = True
                         self.diagnostics.dropped += 1
                         self.diagnostics.drops.append("blocked:job")
@@ -757,6 +757,9 @@ def _looks_hard_blocked(html_text: str) -> bool:
         "access is temporarily restricted",
         "we detected unusual activity",
         "need help? submit feedback",
+        # DataDome / bot challenge variants observed on Wellfound job pages.
+        "var dd=",
+        "datadome",
     ):
         if needle in lowered:
             return True
