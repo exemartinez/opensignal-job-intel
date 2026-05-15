@@ -212,6 +212,23 @@ Live Indeed search-card rows are only persisted when the scraper can derive a
 real href-backed `jk` value and normalize it into a canonical
 `https://www.indeed.com/viewjob?jk=...` URL.
 
+All sources in one run (parallel acquisition):
+
+```bash
+python3.11 main.py ingest-all \
+  --compass-file profiles/professional_compass.json \
+  --db-path data/jobs.db \
+  --limit 10 \
+  --max-jobs 25 \
+  --capture-dir data/all_source_captures \
+  --schedule-file profiles/extraction_schedule.now.yaml
+```
+
+`ingest-all` runs LinkedIn, Indeed, and Wellfound acquisition concurrently, then
+persists into SQLite sequentially (to avoid DB lock contention). When
+`--capture-dir` is set, per-source capture artifacts are written under
+`<capture-dir>/linkedin`, `<capture-dir>/indeed`, and `<capture-dir>/wellfound`.
+
 Wellfound fixture mode (offline):
 
 ```bash

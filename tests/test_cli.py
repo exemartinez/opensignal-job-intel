@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import argparse
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from src import runtime_entrypoints as cli
+from src.core_domain_inputs import JobRecord, JobSource
 
 
 class CliTests(unittest.TestCase):
@@ -60,6 +62,19 @@ class CliTests(unittest.TestCase):
             result = cli.main()
 
         self.assertEqual(6, result)
+        run_ingest.assert_called_once_with(parser.parse_args.return_value)
+
+    def test_main_dispatches_ingest_all_command(self) -> None:
+        parser = Mock()
+        parser.parse_args.return_value = argparse.Namespace(command="ingest-all")
+
+        with (
+            patch("src.runtime_entrypoints.build_parser", return_value=parser),
+            patch("src.runtime_entrypoints._run_all_ingest", return_value=4) as run_ingest,
+        ):
+            result = cli.main()
+
+        self.assertEqual(4, result)
         run_ingest.assert_called_once_with(parser.parse_args.return_value)
 
     def test_run_ingest_uses_fixture_adapter_when_source_file_is_provided(self) -> None:
@@ -180,6 +195,78 @@ class CliTests(unittest.TestCase):
             max_jobs=8,
         )
         print_mock.assert_called_once()
+
+    def test_run_all_ingest_acquires_in_parallel_and_persists_sequentially(self) -> None:
+        args = argparse.Namespace(
+            compass_file="profiles/professional_compass.json",
+            extraction_spec="config/linkedin_extraction.template.json",
+            max_jobs=30,
+            capture_dir=None,
+            schedule_file=None,
+            db_path="data/jobs.db",
+            limit=10,
+            workers=3,
+        )
+
+        now = datetime(2026, 5, 15, tzinfo=timezone.utc)
+        linkedin_job = JobRecord(
+            source=JobSource.LINKEDIN,
+            company="Co",
+            title="T",
+            description="D",
+            link="https://www.linkedin.com/jobs/view/1",
+            collected_at=now,
+            external_job_id="1",
+        )
+        indeed_job = JobRecord(
+            source=JobSource.INDEED,
+            company="Co2",
+            title="T2",
+            description="D2",
+            link="https://www.indeed.com/viewjob?jk=abc",
+            collected_at=now,
+            external_job_id="abc",
+        )
+        wellfound_job = JobRecord(
+            source=JobSource.WELLFOUND,
+            company="Co3",
+            title="T3",
+            description="D3",
+            link="https://wellfound.com/jobs/123-job",
+            collected_at=now,
+            external_job_id="123",
+        )
+
+        repository = Mock()
+        repository.count_jobs.return_value = 3
+        repository.upsert_job.side_effect = [True, False, True]
+        compass = SimpleNamespace(search_max_post_age_days=None)
+        evaluator = Mock()
+        evaluator.evaluate.side_effect = [object(), object(), object()]
+        evaluator.as_dict.return_value = {"company": "x"}
+
+        linkedin_adapter = Mock()
+        linkedin_adapter.fetch_jobs.return_value = [linkedin_job]
+        indeed_adapter = Mock()
+        indeed_adapter.fetch_jobs.return_value = [indeed_job]
+        wellfound_adapter = Mock()
+        wellfound_adapter.fetch_jobs.return_value = [wellfound_job]
+
+        with (
+            patch("src.runtime_entrypoints.SQLiteJobRepository", return_value=repository),
+            patch("src.runtime_entrypoints.load_professional_compass", return_value=compass),
+            patch("src.runtime_entrypoints.JobCompassEvaluator", return_value=evaluator),
+            patch("src.runtime_entrypoints.LinkedInScrapeAdapter", return_value=linkedin_adapter),
+            patch("src.runtime_entrypoints.IndeedScrapeAdapter", return_value=indeed_adapter),
+            patch("src.runtime_entrypoints.WellfoundScrapeAdapter", return_value=wellfound_adapter),
+            patch("builtins.print"),
+        ):
+            exit_code = cli._run_all_ingest(args)
+
+        self.assertEqual(0, exit_code)
+        repository.initialize.assert_called_once_with()
+        self.assertEqual(3, repository.upsert_job.call_count)
+        evaluator.evaluate.assert_called()
 
     def test_build_parser_defaults_harvest_schedule_help_to_config_paths(self) -> None:
         parser = cli.build_parser()
