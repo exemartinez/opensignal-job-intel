@@ -8,6 +8,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 - Indeed ingestion support through the shared `JobSourceAdapter` flow, including fixture-backed and live acquisition modes, deterministic extraction, source-local diagnostics, and canonical SQLite persistence/reporting.
 - Wellfound ingestion support through the shared `JobSourceAdapter` flow (fixture-backed and live scraping), including canonical normalization and CLI wiring via `ingest-wellfound`.
+- `ingest-all` CLI command to run LinkedIn, Indeed, and Wellfound acquisition in parallel (threaded) while serializing SQLite writes for lock-safe persistence.
 
 ### Changed
 - Live Indeed acquisition now uses Selenium-backed browser automation rather than raw HTTP requests because Indeed search pages are challenge-protected, with Chrome as the default live browser path on this machine.

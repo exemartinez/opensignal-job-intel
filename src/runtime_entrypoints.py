@@ -6,6 +6,7 @@ Author: Ezequiel H. Martinez
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import sys
 from pathlib import Path
@@ -86,6 +87,36 @@ class RuntimeEntrypoints:
         wellfound.add_argument("--db-path", default="data/jobs.db")
         wellfound.add_argument("--limit", type=int, default=10)
 
+        ingest_all = subparsers.add_parser(
+            "ingest-all",
+            help="Ingest LinkedIn + Indeed + Wellfound in one run (parallel acquisition, serialized SQLite writes).",
+        )
+        ingest_all.add_argument("--compass-file", default="profiles/professional_compass.json")
+        ingest_all.add_argument(
+            "--extraction-spec",
+            default="config/linkedin_extraction.template.json",
+            help="LinkedIn extraction spec path (used only for LinkedIn).",
+        )
+        ingest_all.add_argument("--max-jobs", type=int, default=30)
+        ingest_all.add_argument(
+            "--capture-dir",
+            default=None,
+            help="Base capture directory. Per-source subfolders will be created under this directory.",
+        )
+        ingest_all.add_argument(
+            "--schedule-file",
+            default=None,
+            help="Wellfound schedule/config file (defaults to profiles/extraction_schedule.now.yaml when present).",
+        )
+        ingest_all.add_argument("--db-path", default="data/jobs.db")
+        ingest_all.add_argument("--limit", type=int, default=10)
+        ingest_all.add_argument(
+            "--workers",
+            type=int,
+            default=3,
+            help="Number of parallel acquisition workers (one per source by default).",
+        )
+
         harvest = subparsers.add_parser(
             "harvest-linkedin",
             help="Run the nightly LinkedIn harvest orchestrator into SQLite.",
@@ -123,6 +154,8 @@ class RuntimeEntrypoints:
             return _run_indeed_ingest(args)
         if args.command == "ingest-wellfound":
             return _run_wellfound_ingest(args)
+        if args.command == "ingest-all":
+            return _run_all_ingest(args)
         if args.command == "harvest-linkedin":
             return _run_harvest(args)
         return RuntimeEntrypoints.run_runtime_command(args)
@@ -173,6 +206,126 @@ class RuntimeEntrypoints:
                 schedule_path=args.schedule_file,
             ),
         )
+
+    @staticmethod
+    def run_all_ingest(args: argparse.Namespace) -> int:
+        """Run LinkedIn + Indeed + Wellfound acquisition in parallel, then persist sequentially."""
+        repository = SQLiteJobRepository(Path(args.db_path))
+        repository.initialize()
+        compass = load_professional_compass(args.compass_file)
+        evaluator = JobCompassEvaluator(compass)
+
+        base_capture_dir = Path(args.capture_dir) if args.capture_dir else None
+        linkedin_capture = str(base_capture_dir / "linkedin") if base_capture_dir else None
+        indeed_capture = str(base_capture_dir / "indeed") if base_capture_dir else None
+        wellfound_capture = str(base_capture_dir / "wellfound") if base_capture_dir else None
+
+        adapters = {
+            "LinkedIn": LinkedInScrapeAdapter(
+                compass=compass,
+                extraction_spec_path=args.extraction_spec,
+                max_jobs=args.max_jobs,
+                capture_dir=linkedin_capture,
+                write_fixture_path=None,
+            ),
+            "Indeed": IndeedScrapeAdapter(
+                compass=compass,
+                max_jobs=args.max_jobs,
+                capture_dir=indeed_capture,
+                write_fixture_path=None,
+            ),
+            "Wellfound": WellfoundScrapeAdapter(
+                compass=compass,
+                max_jobs=args.max_jobs,
+                capture_dir=wellfound_capture,
+                write_fixture_path=None,
+                schedule_path=args.schedule_file,
+            ),
+        }
+
+        acquisition_errors: dict[str, str] = {}
+        acquired_jobs: dict[str, list] = {}
+
+        def _acquire(source: str) -> list:
+            """Fetch canonical job records for one source."""
+            return adapters[source].fetch_jobs()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, int(args.workers))) as executor:
+            futures = {executor.submit(_acquire, source): source for source in adapters}
+            for future in concurrent.futures.as_completed(futures):
+                source = futures[future]
+                try:
+                    acquired_jobs[source] = future.result()
+                except Exception as exc:  # pragma: no cover (covered via unit test mocks)
+                    acquisition_errors[source] = f"{type(exc).__name__}: {exc}"
+                    acquired_jobs[source] = []
+
+        total_stored = 0
+        total_inserted = 0
+        total_updated = 0
+        all_evaluations = []
+        per_source_summary: dict[str, dict[str, int]] = {}
+
+        # Serialize SQLite writes to avoid lock contention from concurrent writers.
+        for source in ("LinkedIn", "Indeed", "Wellfound"):
+            jobs = [job.normalized() for job in acquired_jobs.get(source, [])]
+            stored = 0
+            inserted = 0
+            updated = 0
+            for job in jobs:
+                was_inserted = repository.upsert_job(job)
+                all_evaluations.append(evaluator.evaluate(job))
+                stored += 1
+                if was_inserted:
+                    inserted += 1
+                else:
+                    updated += 1
+            per_source_summary[source] = {
+                "fetched": len(jobs),
+                "persisted": stored,
+                "inserted": inserted,
+                "updated": updated,
+            }
+            total_stored += stored
+            total_inserted += inserted
+            total_updated += updated
+
+        print(
+            f"Loaded compass from {args.compass_file}. "
+            f"Persisted {total_stored} jobs into {args.db_path} "
+            f"(new: {total_inserted}, updated: {total_updated}). "
+            f"Stored records: {repository.count_jobs()}."
+        )
+
+        for source, adapter in adapters.items():
+            if hasattr(adapter, "diagnostics"):
+                try:
+                    diag = adapter.diagnostics.as_dict()  # type: ignore[attr-defined]
+                    print(json.dumps({"acquisition_diagnostics": {source: diag}}, ensure_ascii=True))
+                except Exception:
+                    pass
+
+        if acquisition_errors:
+            print(json.dumps({"acquisition_errors": acquisition_errors}, ensure_ascii=True))
+
+        print(
+            json.dumps(
+                {
+                    "ingest_all_summary": {
+                        "per_source": per_source_summary,
+                        "persisted": total_stored,
+                        "inserted": total_inserted,
+                        "updated": total_updated,
+                        "stored_records": repository.count_jobs(),
+                    }
+                },
+                ensure_ascii=True,
+            )
+        )
+
+        for evaluation in all_evaluations[: args.limit]:
+            print(json.dumps(evaluator.as_dict(evaluation), ensure_ascii=True))
+        return 0
     @staticmethod
     def _run_source_ingest(
         *,
@@ -290,6 +443,10 @@ def _run_wellfound_ingest(args: argparse.Namespace) -> int:
     """Expose Wellfound ingest execution at module scope for patch-friendly tests."""
     return RuntimeEntrypoints.run_wellfound_ingest(args)
 
+def _run_all_ingest(args: argparse.Namespace) -> int:
+    """Expose the multi-source ingest execution at module scope for tests."""
+    return RuntimeEntrypoints.run_all_ingest(args)
+
 
 def _run_harvest(args: argparse.Namespace) -> int:
     """Expose harvest execution at module scope for patch-friendly tests."""
@@ -307,5 +464,6 @@ __all__ = [
     "_run_ingest",
     "_run_indeed_ingest",
     "_run_wellfound_ingest",
+    "_run_all_ingest",
     "_run_harvest",
 ]
