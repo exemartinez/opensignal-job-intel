@@ -224,7 +224,7 @@ python3.11 main.py ingest-all \
   --schedule-file profiles/extraction_schedule.now.yaml
 ```
 
-`ingest-all` runs LinkedIn, Indeed, and Wellfound acquisition concurrently, then
+`ingest-all` runs LinkedIn, Indeed, and Wellfound acquisition concurrently (multiprocessing), then
 persists into SQLite sequentially (to avoid DB lock contention). When
 `--capture-dir` is set, per-source capture artifacts are written under
 `<capture-dir>/linkedin`, `<capture-dir>/indeed`, and `<capture-dir>/wellfound`.

@@ -30,6 +30,57 @@ from src.wellfound_acquisition import WellfoundJsonFileAdapter, WellfoundScrapeA
 from src.persistence_runtime_ops import HarvestCronScripts, SQLiteJobRepository
 
 
+def _fetch_jobs_for_source(
+    *,
+    source: str,
+    compass_file: str,
+    extraction_spec: str,
+    max_jobs: int,
+    capture_dir: str | None,
+    schedule_file: str | None,
+) -> tuple[str, list, dict | None]:
+    """Fetch canonical jobs for one source inside a child process.
+
+    This function is module-level (not nested) so it is picklable under the
+    macOS multiprocessing spawn model used by ProcessPoolExecutor.
+    """
+    compass = load_professional_compass(compass_file)
+    if source == "LinkedIn":
+        adapter = LinkedInScrapeAdapter(
+            compass=compass,
+            extraction_spec_path=extraction_spec,
+            max_jobs=max_jobs,
+            capture_dir=capture_dir,
+            write_fixture_path=None,
+        )
+    elif source == "Indeed":
+        adapter = IndeedScrapeAdapter(
+            compass=compass,
+            max_jobs=max_jobs,
+            capture_dir=capture_dir,
+            write_fixture_path=None,
+        )
+    elif source == "Wellfound":
+        adapter = WellfoundScrapeAdapter(
+            compass=compass,
+            max_jobs=max_jobs,
+            capture_dir=capture_dir,
+            write_fixture_path=None,
+            schedule_path=schedule_file,
+        )
+    else:
+        raise ValueError(f"Unsupported source: {source}")
+
+    jobs = adapter.fetch_jobs()
+    diagnostics = None
+    if hasattr(adapter, "diagnostics"):
+        try:
+            diagnostics = adapter.diagnostics.as_dict()  # type: ignore[attr-defined]
+        except Exception:
+            diagnostics = None
+    return source, jobs, diagnostics
+
+
 class RuntimeEntrypoints:
     """Own the public CLI parsing and top-level command dispatch."""
 
@@ -220,43 +271,49 @@ class RuntimeEntrypoints:
         indeed_capture = str(base_capture_dir / "indeed") if base_capture_dir else None
         wellfound_capture = str(base_capture_dir / "wellfound") if base_capture_dir else None
 
-        adapters = {
-            "LinkedIn": LinkedInScrapeAdapter(
-                compass=compass,
-                extraction_spec_path=args.extraction_spec,
-                max_jobs=args.max_jobs,
-                capture_dir=linkedin_capture,
-                write_fixture_path=None,
-            ),
-            "Indeed": IndeedScrapeAdapter(
-                compass=compass,
-                max_jobs=args.max_jobs,
-                capture_dir=indeed_capture,
-                write_fixture_path=None,
-            ),
-            "Wellfound": WellfoundScrapeAdapter(
-                compass=compass,
-                max_jobs=args.max_jobs,
-                capture_dir=wellfound_capture,
-                write_fixture_path=None,
-                schedule_path=args.schedule_file,
-            ),
-        }
-
         acquisition_errors: dict[str, str] = {}
         acquired_jobs: dict[str, list] = {}
+        acquisition_diagnostics: dict[str, dict] = {}
 
-        def _acquire(source: str) -> list:
-            """Fetch canonical job records for one source."""
-            return adapters[source].fetch_jobs()
+        source_args = {
+            "LinkedIn": {
+                "capture_dir": linkedin_capture,
+                "schedule_file": None,
+            },
+            "Indeed": {
+                "capture_dir": indeed_capture,
+                "schedule_file": None,
+            },
+            "Wellfound": {
+                "capture_dir": wellfound_capture,
+                "schedule_file": args.schedule_file,
+            },
+        }
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, int(args.workers))) as executor:
-            futures = {executor.submit(_acquire, source): source for source in adapters}
+        # True multiprocessing: each source acquisition runs in its own process.
+        with concurrent.futures.ProcessPoolExecutor(max_workers=max(1, int(args.workers))) as executor:
+            futures = {}
+            for source, extra in source_args.items():
+                futures[
+                    executor.submit(
+                        _fetch_jobs_for_source,
+                        source=source,
+                        compass_file=args.compass_file,
+                        extraction_spec=args.extraction_spec,
+                        max_jobs=args.max_jobs,
+                        capture_dir=extra["capture_dir"],
+                        schedule_file=extra["schedule_file"],
+                    )
+                ] = source
+
             for future in concurrent.futures.as_completed(futures):
                 source = futures[future]
                 try:
-                    acquired_jobs[source] = future.result()
-                except Exception as exc:  # pragma: no cover (covered via unit test mocks)
+                    returned_source, jobs, diagnostics = future.result()
+                    acquired_jobs[returned_source] = jobs
+                    if diagnostics is not None:
+                        acquisition_diagnostics[returned_source] = diagnostics
+                except Exception as exc:  # pragma: no cover
                     acquisition_errors[source] = f"{type(exc).__name__}: {exc}"
                     acquired_jobs[source] = []
 
@@ -297,13 +354,8 @@ class RuntimeEntrypoints:
             f"Stored records: {repository.count_jobs()}."
         )
 
-        for source, adapter in adapters.items():
-            if hasattr(adapter, "diagnostics"):
-                try:
-                    diag = adapter.diagnostics.as_dict()  # type: ignore[attr-defined]
-                    print(json.dumps({"acquisition_diagnostics": {source: diag}}, ensure_ascii=True))
-                except Exception:
-                    pass
+        if acquisition_diagnostics:
+            print(json.dumps({"acquisition_diagnostics": acquisition_diagnostics}, ensure_ascii=True))
 
         if acquisition_errors:
             print(json.dumps({"acquisition_errors": acquisition_errors}, ensure_ascii=True))
