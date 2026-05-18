@@ -245,20 +245,35 @@ class CliTests(unittest.TestCase):
         evaluator.evaluate.side_effect = [object(), object(), object()]
         evaluator.as_dict.return_value = {"company": "x"}
 
-        linkedin_adapter = Mock()
-        linkedin_adapter.fetch_jobs.return_value = [linkedin_job]
-        indeed_adapter = Mock()
-        indeed_adapter.fetch_jobs.return_value = [indeed_job]
-        wellfound_adapter = Mock()
-        wellfound_adapter.fetch_jobs.return_value = [wellfound_job]
+        class DummyProcessPoolExecutor:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            def submit(self, fn, **kwargs):
+                future = Mock()
+                source = kwargs["source"]
+                if source == "LinkedIn":
+                    future.result.return_value = ("LinkedIn", [linkedin_job], None)
+                elif source == "Indeed":
+                    future.result.return_value = ("Indeed", [indeed_job], None)
+                elif source == "Wellfound":
+                    future.result.return_value = ("Wellfound", [wellfound_job], None)
+                else:
+                    future.result.return_value = (source, [], None)
+                return future
 
         with (
             patch("src.runtime_entrypoints.SQLiteJobRepository", return_value=repository),
             patch("src.runtime_entrypoints.load_professional_compass", return_value=compass),
             patch("src.runtime_entrypoints.JobCompassEvaluator", return_value=evaluator),
-            patch("src.runtime_entrypoints.LinkedInScrapeAdapter", return_value=linkedin_adapter),
-            patch("src.runtime_entrypoints.IndeedScrapeAdapter", return_value=indeed_adapter),
-            patch("src.runtime_entrypoints.WellfoundScrapeAdapter", return_value=wellfound_adapter),
+            patch("src.runtime_entrypoints.concurrent.futures.ProcessPoolExecutor", DummyProcessPoolExecutor),
+            patch("src.runtime_entrypoints.concurrent.futures.as_completed", lambda futures: list(futures)),
             patch("builtins.print"),
         ):
             exit_code = cli._run_all_ingest(args)
