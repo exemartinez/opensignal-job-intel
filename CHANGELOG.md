@@ -15,6 +15,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - Live Indeed search-card persistence now rejects placeholder or mismatched card ids and stores only canonical href-backed `viewjob` URLs derived from verified `jk` values.
 - Live Wellfound acquisition now uses Selenium-backed browser automation so job detail pages can be fetched reliably without guest-mode 403 blocks.
 
+## - 2026-05-18
+
+### Changed
+- Updated `AGENTS.md` runtime boundaries to reflect the current `src/` architecture, including the shared `JobSourceAdapter` contract and canonical `JobRecord` flow through ingestion.
+- Documented the active source surface in `AGENTS.md` as LinkedIn, Indeed, and Wellfound acquisition modules, plus shared extraction/filter helpers in `src/linkedin_extraction_filtering.py`.
+- Clarified operational flow in `AGENTS.md` for `ingest-all` (parallel acquisition with serialized SQLite persistence) and for nightly LinkedIn harvest orchestration in `src/harvest_orchestration.py`.
+
 ## - 2026-05-09
 
 ### Changed

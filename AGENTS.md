@@ -18,11 +18,16 @@
 - CLI entrypoint is `main.py`, which calls `src/runtime_entrypoints.py:main`.
 - Ingestion flow wiring is in `src/runtime_entrypoints.py`:
   - load compass (`src/core_domain_inputs.py`)
-  - fetch via source adapter (`src/linkedin_acquisition.py`, `src/indeed_acquisition.py`)
+  - fetch via source adapter (`src/linkedin_acquisition.py`, `src/indeed_acquisition.py`, `src/wellfound_acquisition.py`)
   - persist via SQLite repository (`src/persistence_runtime_ops.py`)
   - evaluate via rule-based evaluator (`src/core_domain_inputs.py`)
+- Shared canonical source boundary is `JobSourceAdapter` in `src/core_domain_inputs.py`; each source adapter returns canonical `JobRecord` objects.
 - LinkedIn acquisition supports both local JSON fixtures and live guest-page scraping under `src/linkedin_acquisition.py`.
-- Indeed acquisition supports both local JSON fixtures and live guest-page scraping under `src/indeed_acquisition.py`.
+- Indeed acquisition supports both local JSON fixtures and live Selenium scraping under `src/indeed_acquisition.py`.
+- Wellfound acquisition supports both local JSON fixtures and live Selenium scraping under `src/wellfound_acquisition.py`.
+- LinkedIn extraction/parsing/filter helpers live in `src/linkedin_extraction_filtering.py` and are reused by source adapters.
+- Nightly LinkedIn harvest orchestration is in `src/harvest_orchestration.py` (windowing, pacing, throttle/backoff, stale-stream stops, and persisted query/run state).
+- Multi-source ingestion command is `ingest-all`, which acquires in parallel and persists sequentially to avoid SQLite writer lock contention.
 - Follow `ARCHITECTURE.md` for package boundaries, OO conventions, duplication policy, and documentation expectations.
 
 ## Data + Persistence Facts That Affect Changes
