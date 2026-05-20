@@ -1,0 +1,6 @@
+sources:
+  wellfound:
+    browser: chrome
+    headless: true
+    chrome_profile_dir: /tmp/wellfound_chrome_profile
+    wait_seconds: 45

@@ -1,0 +1,5 @@
+sources:
+  wellfound:
+    browser: firefox
+    headless: true
+    wait_seconds: 45

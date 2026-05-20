@@ -38,6 +38,19 @@ class CliTests(unittest.TestCase):
         self.assertEqual(9, result)
         run_harvest.assert_called_once_with(parser.parse_args.return_value)
 
+    def test_main_dispatches_harvest_all_command(self) -> None:
+        parser = Mock()
+        parser.parse_args.return_value = argparse.Namespace(command="harvest-all")
+
+        with (
+            patch("src.runtime_entrypoints.build_parser", return_value=parser),
+            patch("src.runtime_entrypoints._run_harvest_all", return_value=3) as run_harvest,
+        ):
+            result = cli.main()
+
+        self.assertEqual(3, result)
+        run_harvest.assert_called_once_with(parser.parse_args.return_value)
+
     def test_main_dispatches_indeed_ingest_command(self) -> None:
         parser = Mock()
         parser.parse_args.return_value = argparse.Namespace(command="ingest-indeed")
@@ -195,6 +208,39 @@ class CliTests(unittest.TestCase):
             max_jobs=8,
         )
         print_mock.assert_called_once()
+
+    def test_run_harvest_all_reports_global_preflight_errors(self) -> None:
+        args = argparse.Namespace(
+            sources="linkedin,indeed,wellfound",
+            compass_file="profiles/professional_compass.json",
+            extraction_spec="config/linkedin_extraction.template.json",
+            schedule_file=None,
+            capture_dir=None,
+            db_path="data/jobs.db",
+            max_jobs=10,
+        )
+        with (
+            patch(
+                "src.runtime_entrypoints._run_linux_harvest_preflight",
+                return_value=(["missing db"], {}),
+            ) as preflight,
+            patch("builtins.print") as print_mock,
+        ):
+            result = cli._run_harvest_all(args)
+
+        self.assertEqual(1, result)
+        preflight.assert_called_once()
+        print_mock.assert_called_once()
+
+    def test_parse_harvest_sources_rejects_invalid_source(self) -> None:
+        with self.assertRaises(ValueError):
+            cli._parse_harvest_sources("linkedin,foo")
+
+    def test_diagnostics_failure_reason_detects_browser_session_failure(self) -> None:
+        reason = cli._diagnostics_failure_reason(
+            {"drops": ["browser_session_failed:chrome:RuntimeError:Can't find free port"]}
+        )
+        self.assertEqual("browser_session_failed:chrome:RuntimeError:Can't find free port", reason)
 
     def test_run_all_ingest_acquires_in_parallel_and_persists_sequentially(self) -> None:
         args = argparse.Namespace(

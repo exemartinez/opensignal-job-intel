@@ -317,12 +317,22 @@ python3.11 main.py harvest-linkedin \
   --max-jobs 25
 ```
 
+Multi-source unattended harvest mode (Linux-focused preflight + source isolation):
+
+```bash
+python3.11 main.py harvest-all \
+  --compass-file profiles/professional_compass.json \
+  --db-path data/jobs.db \
+  --max-jobs 25 \
+  --sources linkedin,indeed,wellfound
+```
+
 Schedule precedence for harvest mode:
 
 - local override: `config/extraction_schedule.yaml`
 - fallback template: `config/extraction_schedule.template.yaml`
 
-The nightly harvester writes verbose timestamped logs to the configured `.log` file and persists resume state in SQLite so the next run can continue where the previous one stopped.
+The nightly harvester writes verbose timestamped logs to the configured `.log` file and persists resume state in SQLite so the next run can continue where the previous one stopped. `harvest-all` emits a per-source summary (`ok|failed|skipped`) so one failing source does not stop healthy sources.
 
 Operational runtime commands:
 
@@ -350,6 +360,7 @@ These runtime commands keep scheduling external to the main harvest application 
 Notes:
 
 - Install the cron helper from the exact Python environment you want cron to use. The installed cron line captures that interpreter as an absolute path.
+- `run-harvest-cron` now executes `main.py harvest-all` (multi-source unattended run).
 - `install-continuous-hourly-harvest-cron` installs the hourly cron block.
 - `install-harvest-cron` installs the nightly cron block.
 - `remove-harvest-cron` removes nightly and hourly harvest blocks.

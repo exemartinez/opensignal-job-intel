@@ -9,6 +9,7 @@ import html
 import json
 import os
 import re
+import tempfile
 import time
 import urllib.parse
 from dataclasses import dataclass, field
@@ -67,12 +68,16 @@ class IndeedBrowserSession:
         self,
         *,
         browser_name: str,
+        headless: bool,
+        chrome_profile_dir: str | None,
         request_delay_seconds: float,
         wait_seconds: float,
         cookie_header: str | None,
     ) -> None:
         """Bind the browser type, pacing, wait policy, and optional cookies."""
         self._browser_name = browser_name
+        self._headless = headless
+        self._chrome_profile_dir = chrome_profile_dir
         self._request_delay_seconds = request_delay_seconds
         self._wait_seconds = wait_seconds
         self._cookie_header = cookie_header
@@ -117,8 +122,19 @@ class IndeedBrowserSession:
             return webdriver.Safari()
         if browser == "chrome":
             options = webdriver.ChromeOptions()
+            if self._headless:
+                options.add_argument("--headless=new")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--remote-debugging-port=0")
             options.add_argument("--disable-blink-features=AutomationControlled")
             options.add_argument("--window-size=1440,1200")
+            profile_dir = self._chrome_profile_dir
+            if profile_dir:
+                Path(profile_dir).mkdir(parents=True, exist_ok=True)
+                options.add_argument(f"--user-data-dir={profile_dir}")
+            else:
+                options.add_argument(f"--user-data-dir={tempfile.mkdtemp(prefix='indeed-chrome-')}")
             options.add_argument(
                 "--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
@@ -174,6 +190,12 @@ class IndeedScrapeAdapter(JobSourceAdapter):
         self._cookies = os.environ.get("INDEED_COOKIES")
         self._browser_name = os.environ.get("INDEED_BROWSER", "chrome")
         self._wait_seconds = float(os.environ.get("INDEED_BROWSER_WAIT_SECONDS", "15"))
+        headless_env = os.environ.get("INDEED_HEADLESS")
+        if headless_env is None:
+            self._headless = os.name != "nt" and not os.environ.get("DISPLAY")
+        else:
+            self._headless = headless_env.strip().lower() in {"1", "true", "yes", "on"}
+        self._chrome_profile_dir = os.environ.get("INDEED_CHROME_PROFILE_DIR") or "/tmp/indeed_chrome_profile"
         self.diagnostics = IndeedAcquisitionDiagnostics()
 
     def fetch_jobs(self) -> list[JobRecord]:
@@ -236,6 +258,8 @@ class IndeedScrapeAdapter(JobSourceAdapter):
         """Create the browser-backed fetch session for one live run."""
         return IndeedBrowserSession(
             browser_name=self._browser_name,
+            headless=self._headless,
+            chrome_profile_dir=self._chrome_profile_dir,
             request_delay_seconds=self._request_delay_seconds,
             wait_seconds=self._wait_seconds,
             cookie_header=self._cookies,

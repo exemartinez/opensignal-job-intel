@@ -159,13 +159,32 @@ class WellfoundScrapeAdapter(JobSourceAdapter):
         self._cookies = settings.cookies
         self._browser_name = settings.browser
         self._wait_seconds = settings.wait_seconds
-        self._headless = settings.headless
+        self._headless = settings.headless or (os.name != "nt" and not os.environ.get("DISPLAY"))
         self._chrome_profile_dir = settings.chrome_profile_dir
 
         self.diagnostics = WellfoundAcquisitionDiagnostics()
 
     def fetch_jobs(self) -> list[JobRecord]:
         """Fetch, extract, filter, and optionally serialize live Wellfound jobs."""
+        attempts = self._build_attempts()
+        all_drops: list[str] = []
+        for browser_name, headless in attempts:
+            self.diagnostics = WellfoundAcquisitionDiagnostics()
+            jobs = self._fetch_jobs_once(browser_name=browser_name, headless=headless)
+            if jobs:
+                return jobs
+            all_drops.extend(self.diagnostics.drops)
+            if not self.diagnostics.blocked and not any(
+                drop.startswith("browser_session_failed:") for drop in self.diagnostics.drops
+            ):
+                return jobs
+        # Preserve all attempt errors for final diagnostics visibility.
+        self.diagnostics.drops = all_drops
+        self.diagnostics.dropped = len(all_drops)
+        return []
+
+    def _fetch_jobs_once(self, *, browser_name: str, headless: bool) -> list[JobRecord]:
+        """Execute one Wellfound acquisition attempt with a specific browser mode."""
         collected_at = utc_now()
         max_age_days = self._compass.search_max_post_age_days
         allowed_workplace = _normalize_str_list(self._compass.search_workplace_types)
@@ -176,7 +195,7 @@ class WellfoundScrapeAdapter(JobSourceAdapter):
         jobs: list[JobRecord] = []
         raw_fixture: list[dict[str, object]] = []
         try:
-            with self._browser_session() as session:
+            with self._browser_session(browser_name=browser_name, headless=headless) as session:
                 for query in queries:
                     for page in range(self._max_pages_per_query):
                         search_url = _build_search_url(query=query, page=page)
@@ -250,16 +269,29 @@ class WellfoundScrapeAdapter(JobSourceAdapter):
 
         return jobs
 
-    def _browser_session(self) -> "WellfoundBrowserSession":
+    def _browser_session(self, *, browser_name: str, headless: bool) -> "WellfoundBrowserSession":
         """Create the browser-backed fetch session for one live run."""
         return WellfoundBrowserSession(
-            browser_name=self._browser_name,
+            browser_name=browser_name,
             request_delay_seconds=self._request_delay_seconds,
             wait_seconds=self._wait_seconds,
             cookie_header=self._cookies,
-            headless=self._headless,
+            headless=headless,
             chrome_profile_dir=self._chrome_profile_dir,
         )
+
+    def _build_attempts(self) -> list[tuple[str, bool]]:
+        """Build prioritized browser-mode retries for Wellfound on Linux."""
+        attempts: list[tuple[str, bool]] = [(self._browser_name, self._headless)]
+        if self._browser_name == "chrome" and self._headless:
+            attempts.append(("chrome", False))
+        if self._browser_name == "chrome":
+            attempts.append(("firefox", True))
+        deduped: list[tuple[str, bool]] = []
+        for attempt in attempts:
+            if attempt not in deduped:
+                deduped.append(attempt)
+        return deduped
 
     def _fetch_text(
         self,
@@ -356,6 +388,9 @@ class WellfoundBrowserSession:
             options = webdriver.ChromeOptions()
             if self._headless:
                 options.add_argument("--headless=new")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--remote-debugging-port=0")
             options.add_argument("--disable-blink-features=AutomationControlled")
             options.add_argument("--window-size=1440,1200")
             if self._chrome_profile_dir:

@@ -91,6 +91,8 @@ class HarvestOpsTests(unittest.TestCase):
             self.assertEqual(7, result)
             self.assertFalse(paths.runner_pid_path.exists())
             mock_run.assert_called_once()
+            command = mock_run.call_args.args[0]
+            self.assertIn("harvest-all", command)
 
     def test_harvest_status_reports_not_running_for_stale_pid_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

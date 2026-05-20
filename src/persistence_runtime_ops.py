@@ -387,7 +387,7 @@ class RepoPaths:
     @property
     def harvest_log_path(self) -> Path:
         """Return the harvest application log path."""
-        return self.data_dir / "harvest-linkedin.log"
+        return self.data_dir / "harvest-all.log"
 
     @property
     def runner_pid_path(self) -> Path:
@@ -506,7 +506,7 @@ class HarvestProcessManager:
             command = [
                 _python_executable(),
                 "main.py",
-                "harvest-linkedin",
+                "harvest-all",
                 "--compass-file",
                 "profiles/professional_compass.json",
                 "--db-path",

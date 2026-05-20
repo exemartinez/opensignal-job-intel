@@ -14,6 +14,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - Live Indeed acquisition now uses Selenium-backed browser automation rather than raw HTTP requests because Indeed search pages are challenge-protected, with Chrome as the default live browser path on this machine.
 - Live Indeed search-card persistence now rejects placeholder or mismatched card ids and stores only canonical href-backed `viewjob` URLs derived from verified `jk` values.
 - Live Wellfound acquisition now uses Selenium-backed browser automation so job detail pages can be fetched reliably without guest-mode 403 blocks.
+- Added `harvest-all` runtime command for unattended multi-source harvesting (LinkedIn + Indeed + Wellfound) with per-source status output and failure isolation.
+- Added Linux preflight diagnostics for unattended harvest runs so missing source dependencies and unsupported browser/runtime settings are reported before acquisition starts.
+- Runtime cron wrapper (`run-harvest-cron`) now executes `main.py harvest-all` instead of a LinkedIn-only run.
+- Runtime source imports are now resilient to optional dependency gaps so non-source commands can still run and preflight can report actionable errors.
 
 ## - 2026-05-18
 
